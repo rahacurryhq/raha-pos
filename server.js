@@ -342,8 +342,8 @@ function insertFullMenu() {
         { name: 'Tikka Masala (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: 'Chicken in tomato and cream-based sauce with a lot of spices. Slightly spicy and earthy.', allergens: 'Milk,Cashew' },
         { name: 'Tikka Masala (Lamb)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: 'Irish lamb in tomato and cream-based sauce with a lot of spices. Slightly spicy and earthy.', allergens: 'Milk,Cashew' },
         { name: 'Tikka Masala (Prawns)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: 'King prawns in tomato and cream-based sauce with a lot of spices.', allergens: 'Crustaceans,Milk,Cashew' },
-        { name: 'Bhuna (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: "Grandma's Bhuna Pot — Bengali speciality, spices fried at high temperature then meat simmered in its own juices.", allergens: 'Milk,Cashew' },
-        { name: 'Bhuna (Lamb)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: "Grandma's Bhuna Pot — Bengali speciality with Irish lamb, spices fried at high temperature.", allergens: 'Milk,Cashew' },
+        { name: 'Bhuna (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: "Grandmas Bhuna Pot — Bengali speciality, spices fried at high temperature then meat simmered in its own juices.", allergens: 'Milk,Cashew' },
+        { name: 'Bhuna (Lamb)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: "Grandmas Bhuna Pot — Bengali speciality with Irish lamb, spices fried at high temperature.", allergens: 'Milk,Cashew' },
         { name: 'Saag (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: 'Mixture of leafy greens — spinach, mustard, methi leaves — cooked in mild spices with chicken.', allergens: 'Milk,Cashew,Mustard' },
         { name: 'Saag (Lamb)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: 'Mixture of leafy greens — spinach, mustard, methi leaves — cooked in mild spices with Irish lamb.', allergens: 'Milk,Cashew,Mustard' },
         { name: 'Kadhai (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: 'Smoky and slightly charred flavour. Recommended with chicken. Freshly ground spices.', allergens: 'Milk,Cashew' },
@@ -404,8 +404,8 @@ function insertFullMenu() {
 
         // ===== DESSERTS =====
         { name: 'Gulab Jamun', course: 'desserts', cat: 'Desserts', price: 6.95, desc: 'Deep-fried sweetened dough balls soaked in rose water, sugar and cardamom syrup.', allergens: 'Gluten,Milk,Pistachio' },
-        { name: 'Death By Chocolate Cake', course: 'desserts', cat: 'Desserts', price: 7.95, desc: 'Layers of rich velvety chocolate cake, decadent ganache, and luscious frosting. A chocoholic's dream!', allergens: 'Gluten,Egg,Milk' },
-        { name: 'Cheesecake of the Day', course: 'desserts', cat: 'Desserts', price: 7.95, desc: 'Creamy, zesty cheesecake on a buttery crust, served with ice cream. Ask your server for today's flavour.', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Death By Chocolate Cake', course: 'desserts', cat: 'Desserts', price: 7.95, desc: 'Layers of rich velvety chocolate cake, decadent ganache, and luscious frosting. A chocoholic dream!', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Cheesecake of the Day', course: 'desserts', cat: 'Desserts', price: 7.95, desc: 'Creamy, zesty cheesecake on a buttery crust, served with ice cream. Ask your server for todays flavour.', allergens: 'Gluten,Egg,Milk' },
         { name: 'Pistachio Kulfi', course: 'desserts', cat: 'Desserts', price: 6.95, desc: 'Rich creamy Indian frozen dessert made with milk and finely ground pistachios, infused with cardamom.', allergens: 'Milk,Pistachio' },
         { name: 'Mango Kulfi', course: 'desserts', cat: 'Desserts', price: 6.95, desc: 'Rich creamy Indian frozen dessert made with refreshing mango, infused with cardamom.', allergens: 'Milk,Pistachio' },
         { name: 'Chocolate Brownie', course: 'desserts', cat: 'Desserts', price: 7.95, desc: 'Rich and fudgy chocolate dessert with a soft chewy centre. Served with vanilla ice cream.', allergens: 'Gluten,Egg,Milk' },
@@ -879,6 +879,156 @@ app.get('/api/export/sales', (req, res) => {
 });
 
 // SOCKET
+
+// ============= STRIPE TERMINAL =============
+// Set STRIPE_SECRET_KEY in Railway environment variables
+const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
+
+// Create payment intent for kiosk order
+app.post('/api/kiosk/payment-intent', async (req, res) => {
+    try {
+        if (!stripe) return res.status(503).json({ error: 'Stripe not configured. Set STRIPE_SECRET_KEY in Railway Variables.' });
+        const { amount, currency = 'eur', order_data } = req.body;
+        if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: Math.round(amount * 100), // Stripe uses cents
+            currency,
+            payment_method_types: ['card_present'],
+            capture_method: 'automatic',
+            metadata: {
+                source: 'kiosk',
+                table: order_data?.table_number || 'counter',
+                mode: order_data?.mode || 'collection',
+                items_count: order_data?.items?.length || 0
+            }
+        });
+
+        res.json({ success: true, client_secret: paymentIntent.client_secret, payment_intent_id: paymentIntent.id });
+    } catch (err) {
+        console.error('Stripe payment intent error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Create connection token for Stripe Terminal reader
+app.post('/api/kiosk/connection-token', async (req, res) => {
+    try {
+        if (!stripe) return res.status(503).json({ error: 'Stripe not configured' });
+        const token = await stripe.terminal.connectionTokens.create();
+        res.json({ secret: token.secret });
+    } catch (err) {
+        console.error('Connection token error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Stripe webhook — fires when payment succeeds on Terminal
+// Set STRIPE_WEBHOOK_SECRET in Railway Variables
+app.post('/api/kiosk/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    try {
+        const sig = req.headers['stripe-signature'];
+        const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+        let event;
+
+        if (webhookSecret) {
+            event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+        } else {
+            event = JSON.parse(req.body);
+        }
+
+        if (event.type === 'payment_intent.succeeded') {
+            const pi = event.data.object;
+            const orderData = pi.metadata;
+
+            // Auto-create the order in the system
+            if (orderData && orderData.source === 'kiosk') {
+                console.log('✓ Kiosk payment succeeded:', pi.id);
+                // Order was already created optimistically — update status if needed
+                const existing = db.prepare("SELECT id FROM orders WHERE notes LIKE ?").get(`%${pi.id}%`);
+                if (existing) {
+                    db.prepare("UPDATE orders SET payment_type='card', status='pending' WHERE id=?").run(existing.id);
+                    const order = db.prepare('SELECT * FROM orders WHERE id=?').get(existing.id);
+                    if (order) {
+                        order.items = JSON.parse(order.items);
+                        io.emit('new_order', order);
+                        console.log('✓ Kiosk order confirmed and sent to kitchen:', order.order_number);
+                    }
+                }
+            }
+        }
+
+        res.json({ received: true });
+    } catch (err) {
+        console.error('Webhook error:', err);
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// Confirm kiosk order after payment (called from kiosk UI)
+app.post('/api/kiosk/confirm-order', async (req, res) => {
+    try {
+        const { payment_intent_id, order } = req.body;
+
+        // Verify payment succeeded with Stripe
+        let paymentVerified = false;
+        if (stripe && payment_intent_id) {
+            const pi = await stripe.paymentIntents.retrieve(payment_intent_id);
+            paymentVerified = pi.status === 'succeeded';
+        }
+
+        if (!paymentVerified && process.env.STRIPE_SECRET_KEY) {
+            return res.status(402).json({ error: 'Payment not confirmed' });
+        }
+
+        // Create the order
+        const orderNumber = getNextOrderNumber();
+        const total = order.total || 0;
+        const orderDate = new Date().toISOString();
+        const vatRate = getVATRateForDate(orderDate);
+        const { vat_amount, net_amount } = calculateVAT(total, vatRate);
+
+        const result = db.prepare(`
+            INSERT INTO orders (order_number, timestamp, customer_name, customer_phone,
+                items, subtotal, delivery_charge, vat_rate, vat_amount, net_amount, total,
+                payment_type, mode, table_number, covers, status, created_by, notes)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending',?,?)
+        `).run(
+            orderNumber, orderDate,
+            order.customer_name || 'Kiosk Customer',
+            order.customer_phone || '',
+            JSON.stringify(order.items),
+            order.subtotal || 0, order.delivery_charge || 0,
+            vatRate, vat_amount, net_amount, total,
+            'card', order.mode || 'collection',
+            order.table_number || null, order.covers || 1,
+            'kiosk',
+            `Kiosk order. Payment: ${payment_intent_id || 'verified'}`
+        );
+
+        const newOrder = db.prepare('SELECT * FROM orders WHERE id=?').get(result.lastInsertRowid);
+        newOrder.items = JSON.parse(newOrder.items);
+
+        // Link table if dine-in
+        if (order.table_number) {
+            const tableRec = db.prepare('SELECT id FROM tables WHERE number=?').get(order.table_number);
+            if (tableRec) {
+                db.prepare("UPDATE tables SET status='occupied', current_order_id=?, opened_at=datetime('now') WHERE id=?")
+                    .run(newOrder.id, tableRec.id);
+                io.emit('table_updated', db.prepare('SELECT * FROM tables WHERE id=?').get(tableRec.id));
+            }
+        }
+
+        io.emit('new_order', newOrder);
+        console.log(`✓ Kiosk order #${orderNumber} confirmed — sent to kitchen`);
+        res.json({ success: true, order_number: orderNumber, order: newOrder });
+
+    } catch (err) {
+        console.error('Kiosk confirm error:', err);
+        res.status(500).json({ error: 'Failed to confirm order' });
+    }
+});
+
 io.on('connection', (socket) => {
     console.log('✓ Client connected:', socket.id);
     socket.on('disconnect', () => console.log('✗ Client disconnected:', socket.id));
