@@ -9,6 +9,7 @@
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
+<!-- Bell sounds generated via Web Audio API - no file needed -->
 <body class="bg-gray-50">
     <div id="app">
         <!-- Login Screen -->
@@ -44,10 +45,7 @@
                 <div v-if="loginError" class="mt-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">
                     {{ loginError }}
                 </div>
-                <div class="mt-6 text-center text-sm text-gray-500">
-                    <p>Staff PINs:</p>
-                    <p>Admin: 9999 | Manager: 2222 | Front: 3333</p>
-                </div>
+
             </div>
         </div>
 
@@ -475,6 +473,28 @@
             },
             
             methods: {
+                playBell(type = 'login') {
+                    try {
+                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                        const notes = type === 'login'
+                            ? [{ f: 880, t: 0, d: 0.3 }, { f: 1100, t: 0.15, d: 0.3 }]
+                            : [{ f: 660, t: 0, d: 0.2 }, { f: 880, t: 0.12, d: 0.2 }, { f: 1100, t: 0.24, d: 0.4 }];
+                        notes.forEach(({ f, t, d }) => {
+                            const osc = ctx.createOscillator();
+                            const gain = ctx.createGain();
+                            osc.connect(gain);
+                            gain.connect(ctx.destination);
+                            osc.type = 'sine';
+                            osc.frequency.value = f;
+                            const start = ctx.currentTime + t;
+                            gain.gain.setValueAtTime(0.4, start);
+                            gain.gain.exponentialRampToValueAtTime(0.001, start + d);
+                            osc.start(start);
+                            osc.stop(start + d);
+                        });
+                    } catch(e) { console.log('Sound unavailable'); }
+                },
+
                 async login() {
                     if (!this.loginPin || this.loginPin.length !== 4) {
                         this.loginError = 'Please enter 4-digit PIN';
@@ -493,6 +513,7 @@
                         const data = await res.json();
                         
                         if (data.success) {
+                            this.playBell('login');
                             this.user = data.user;
                             this.user.pin = this.loginPin;
                             this.loginError = '';
@@ -533,6 +554,7 @@
                     this.socket.on('new_order', (order) => {
                         this.recentOrders.unshift(order);
                         this.loadStats();
+                        this.playBell('order');
                     });
                     
                     this.socket.on('order_updated', (order) => {
