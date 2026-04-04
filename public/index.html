@@ -15,9 +15,85 @@
   .table-occupied{border-color:#ef4444;background:#fef2f2}
   .table-reserved{border-color:#f59e0b;background:#fffbeb}
 </style>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then(reg => {
+        console.log('[RAHA] Service Worker registered');
+      }).catch(err => console.log('[RAHA] SW registration failed:', err));
+      // Listen for messages from service worker
+      navigator.serviceWorker.addEventListener('message', event => {
+        const app = document.querySelector('#app').__vue_app__;
+        if (!app) return;
+        const vm = app._instance.proxy;
+        if (event.data.type === 'ORDER_QUEUED') {
+          vm.offlineQueue = event.data.queueSize;
+          vm.showToast(`📦 Order saved offline (${event.data.queueSize} queued)`, 'warning');
+        }
+        if (event.data.type === 'ORDERS_SYNCED') {
+          vm.offlineQueue = event.data.remaining;
+          vm.showToast(`✅ ${event.data.synced} offline order(s) synced to server!`);
+          vm.loadOrders(); vm.loadStats();
+        }
+      });
+    }
+    // Detect online/offline
+    window.addEventListener('online', () => {
+      const app = document.querySelector('#app').__vue_app__;
+      if (app) {
+        const vm = app._instance.proxy;
+        vm.isOnline = true;
+        vm.showToast('✅ Back online — syncing orders...');
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'SYNC_NOW' });
+        }
+      }
+    });
+    window.addEventListener('offline', () => {
+      const app = document.querySelector('#app').__vue_app__;
+      if (app) app._instance.proxy.isOnline = false;
+    });
+  </script>
+  <script>
+    // Fullscreen mode for tablets
+    function goFullscreen() {
+      const el = document.documentElement;
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      else if (el.mozRequestFullScreen) el.mozRequestFullScreen();
+    }
+    // Auto-fullscreen on load if kiosk mode
+    window.addEventListener('load', () => {
+      if (localStorage.getItem('raha-kiosk-mode') === 'true') {
+        setTimeout(goFullscreen, 500);
+      }
+    });
+    // Prevent back/forward navigation in kiosk mode
+    history.pushState(null, null, location.href);
+    window.addEventListener('popstate', () => {
+      history.pushState(null, null, location.href);
+    });
+  </script>
 </head>
 <body class="bg-gray-100">
 <div id="app">
+
+
+<!-- KIOSK LOCK OVERLAY -->
+<div v-if="kioskLocked" class="fixed inset-0 bg-gray-900 z-[999] flex items-center justify-center">
+  <div class="text-center text-white p-8 max-w-sm w-full">
+    <div class="text-8xl mb-6">🔒</div>
+    <h1 class="text-3xl font-bold text-orange-500 mb-2">RAHA POS</h1>
+    <p class="text-gray-400 mb-8">Enter unlock password to access</p>
+    <input v-model="kioskUnlockInput" type="password" maxlength="20"
+      @keyup.enter="unlockKiosk"
+      class="w-full text-center text-2xl bg-gray-800 border-2 border-gray-600 text-white rounded-xl py-4 mb-4 focus:border-orange-500 focus:outline-none"
+      placeholder="••••••••" autofocus>
+    <button @click="unlockKiosk" class="w-full bg-orange-600 text-white py-3 rounded-xl font-bold text-lg hover:bg-orange-700 transition">
+      Unlock
+    </button>
+    <p v-if="kioskError" class="text-red-400 mt-3 text-sm">{{ kioskError }}</p>
+  </div>
+</div>
 
 <!-- LOGIN -->
 <div v-if="!user" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-500 to-red-600">
@@ -47,6 +123,21 @@
 <!-- MAIN APP -->
 <div v-else class="min-h-screen flex flex-col">
 
+
+  <!-- OFFLINE BANNER -->
+  <div v-if="!isOnline" class="bg-yellow-500 text-gray-900 text-center py-2 px-4 text-sm font-bold flex-shrink-0 flex items-center justify-center gap-2">
+    <i class="fas fa-wifi-slash"></i>
+    OFFLINE MODE — Orders are being saved locally and will sync automatically when connection returns
+    <span v-if="offlineQueue>0" class="bg-gray-900 text-yellow-400 px-2 py-0.5 rounded-full text-xs ml-2">
+      {{ offlineQueue }} queued
+    </span>
+  </div>
+  <!-- SYNC BANNER -->
+  <div v-if="isOnline&&offlineQueue>0" class="bg-blue-600 text-white text-center py-2 px-4 text-sm font-bold flex-shrink-0 flex items-center justify-center gap-2">
+    <i class="fas fa-sync fa-spin"></i>
+    Syncing {{ offlineQueue }} offline order(s) to server...
+  </div>
+
   <!-- TOP NAV -->
   <nav class="bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-xl flex-shrink-0">
     <div class="px-4 py-3 flex justify-between items-center">
@@ -65,8 +156,15 @@
           <i class="fas fa-bell mr-1"></i>Pickup
         </a>
         <div class="flex items-center gap-1 ml-1">
-          <div :class="conn==='connected'?'bg-green-400 animate-pulse':'bg-red-300'" class="w-2 h-2 rounded-full"></div>
-          <span class="text-xs hidden sm:block">{{ conn==='connected'?'Live':'Offline' }}</span>
+          <div v-if="isOnline" class="flex items-center gap-1">
+            <div :class="conn==='connected'?'bg-green-400 animate-pulse':'bg-yellow-400'" class="w-2 h-2 rounded-full"></div>
+            <span class="text-xs hidden sm:block">{{ conn==='connected'?'Live':'Reconnecting' }}</span>
+          </div>
+          <div v-else class="flex items-center gap-1 bg-yellow-500 px-2 py-0.5 rounded-lg">
+            <i class="fas fa-wifi-slash text-xs text-gray-900"></i>
+            <span class="text-xs text-gray-900 font-bold">OFFLINE</span>
+            <span v-if="offlineQueue>0" class="text-xs text-gray-900 font-black">({{ offlineQueue }})</span>
+          </div>
         </div>
         <span class="text-xs opacity-75 hidden lg:block ml-1">{{ currentTime }}</span>
         <button @click="logout" class="bg-white text-orange-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-orange-50 ml-1">
@@ -507,6 +605,24 @@
 
     <!-- ========== CUSTOMERS ========== -->
     <div v-if="activeTab==='customers'" class="slide-in space-y-4">
+      <!-- CSV Import -->
+      <div class="bg-white rounded-xl shadow p-4">
+        <h3 class="font-bold mb-3"><i class="fas fa-file-csv mr-2 text-green-600"></i>Import Customer Data</h3>
+        <p class="text-xs text-gray-500 mb-3">Upload a CSV file with columns: name, phone, email, address, delivery_notes, allergen_info. First row should be headers.</p>
+        <div class="flex gap-3 flex-wrap">
+          <input type="file" accept=".csv" @change="handleCSVFile" class="text-sm border rounded-lg px-3 py-2 flex-1">
+          <button @click="importCustomers" :disabled="!importCSV||importLoading"
+            class="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-green-700 disabled:bg-gray-300 transition">
+            <i class="fas fa-upload mr-1"></i>{{ importLoading ? 'Importing...' : 'Import' }}
+          </button>
+        </div>
+        <div v-if="importResult" :class="importResult.success?'bg-green-50 border-green-200 text-green-700':'bg-red-50 border-red-200 text-red-700'"
+          class="mt-3 p-3 rounded-xl border text-sm">
+          <span v-if="importResult.success">✅ Imported {{ importResult.imported }} customers. Skipped {{ importResult.skipped }}.</span>
+          <span v-else>❌ {{ importResult.error }}</span>
+        </div>
+      </div>
+
       <div class="flex justify-between items-center flex-wrap gap-2">
         <h2 class="text-xl font-black">👥 Customers ({{ customers.length }})</h2>
         <button @click="dlCSV('customers')" class="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-orange-700">
@@ -538,6 +654,266 @@
         <div v-if="customers.length===0" class="col-span-3 text-center py-12 text-gray-400 bg-white rounded-xl">
           <i class="fas fa-users text-4xl mb-2 block"></i>
           No customers yet. They appear automatically when orders are placed.
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ========== STAFF MANAGEMENT ========== -->
+    <div v-if="activeTab==='staff'&&user.role==='admin'" class="slide-in space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-xl font-black">👥 Staff Management</h2>
+        <p class="text-sm text-gray-500">Only you (Admin) can see and change this</p>
+      </div>
+
+      <!-- Add new staff -->
+      <div class="bg-white rounded-xl shadow p-5">
+        <h3 class="font-bold text-lg mb-4 text-orange-600"><i class="fas fa-user-plus mr-2"></i>Add New Staff Member</h3>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+          <input v-model="newStaff.name" placeholder="Full name *" class="border rounded-xl px-3 py-2.5 text-sm">
+          <input v-model="newStaff.pin" type="password" maxlength="4" placeholder="4-digit PIN *" class="border rounded-xl px-3 py-2.5 text-sm font-mono tracking-widest">
+          <select v-model="newStaff.role" class="border rounded-xl px-3 py-2.5 text-sm">
+            <option value="front">Front of House</option>
+            <option value="chef">Chef / Kitchen</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+          <button @click="addStaff" class="bg-orange-600 text-white rounded-xl font-bold hover:bg-orange-700 transition px-4 py-2.5 text-sm">
+            <i class="fas fa-plus mr-1"></i>Add Staff
+          </button>
+        </div>
+        <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-xs text-yellow-700">
+          <i class="fas fa-lock mr-1"></i>Your Admin PIN is required to confirm. PIN must be unique — no two staff can share a PIN.
+        </div>
+        <div class="mt-3">
+          <label class="text-xs text-gray-500 block mb-1">Your Admin PIN to confirm</label>
+          <input v-model="staffAdminPin" type="password" maxlength="4" placeholder="Your PIN" class="border rounded-xl px-3 py-2 text-sm font-mono w-40">
+        </div>
+      </div>
+
+      <!-- Staff list -->
+      <div class="bg-white rounded-xl shadow overflow-hidden">
+        <div class="px-5 py-3 bg-gray-50 border-b flex justify-between items-center">
+          <h3 class="font-bold">Current Staff</h3>
+          <button @click="loadStaff" class="text-orange-600 text-sm"><i class="fas fa-sync mr-1"></i>Refresh</button>
+        </div>
+        <div class="divide-y">
+          <div v-for="s in staffList" :key="s.id" class="px-5 py-4 flex items-center justify-between hover:bg-gray-50">
+            <div class="flex items-center gap-4">
+              <div :class="{
+                'bg-red-100 text-red-700': s.role==='admin',
+                'bg-purple-100 text-purple-700': s.role==='manager',
+                'bg-blue-100 text-blue-700': s.role==='chef',
+                'bg-green-100 text-green-700': s.role==='front'
+              }" class="px-3 py-1 rounded-full text-xs font-bold uppercase">{{ s.role }}</div>
+              <div>
+                <p class="font-bold text-gray-800">{{ s.name }}</p>
+                <p class="text-xs text-gray-400">
+                  Last login: {{ s.last_login ? fmtTime(s.last_login) : 'Never' }}
+                  · Joined: {{ s.created_at ? fmtDate(s.created_at) : '' }}
+                </p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span :class="s.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'" class="text-xs px-2 py-1 rounded-full font-semibold">
+                {{ s.active ? 'Active' : 'Inactive' }}
+              </span>
+              <button v-if="s.id !== user.id" @click="toggleStaff(s)" class="text-xs border rounded-lg px-3 py-1.5 hover:bg-gray-100 transition">
+                {{ s.active ? 'Deactivate' : 'Reactivate' }}
+              </button>
+              <span v-else class="text-xs text-gray-400 italic">You</span>
+            </div>
+          </div>
+          <div v-if="staffList.length===0" class="px-5 py-8 text-center text-gray-400">
+            <i class="fas fa-users text-3xl mb-2 block"></i>No staff found
+          </div>
+        </div>
+      </div>
+
+      <!-- Role permissions guide -->
+      <div class="bg-white rounded-xl shadow p-5">
+        <h3 class="font-bold mb-3"><i class="fas fa-shield-alt mr-2 text-blue-600"></i>Role Permissions</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <div class="bg-green-50 rounded-xl p-3 border border-green-200">
+            <p class="font-bold text-green-700 mb-2">Front of House</p>
+            <ul class="text-xs text-gray-600 space-y-1">
+              <li>✅ New orders</li>
+              <li>✅ View tables</li>
+              <li>✅ View orders</li>
+              <li>✅ Dashboard</li>
+              <li>❌ Sales reports</li>
+              <li>❌ Customers</li>
+              <li>❌ Admin</li>
+            </ul>
+          </div>
+          <div class="bg-blue-50 rounded-xl p-3 border border-blue-200">
+            <p class="font-bold text-blue-700 mb-2">Chef / Kitchen</p>
+            <ul class="text-xs text-gray-600 space-y-1">
+              <li>✅ Dashboard</li>
+              <li>✅ Tables view</li>
+              <li>✅ Orders view</li>
+              <li>❌ New orders</li>
+              <li>❌ Sales</li>
+              <li>❌ Admin</li>
+            </ul>
+          </div>
+          <div class="bg-purple-50 rounded-xl p-3 border border-purple-200">
+            <p class="font-bold text-purple-700 mb-2">Manager</p>
+            <ul class="text-xs text-gray-600 space-y-1">
+              <li>✅ Everything FOH has</li>
+              <li>✅ Sales reports</li>
+              <li>✅ Customers</li>
+              <li>❌ Staff mgmt</li>
+              <li>❌ Database</li>
+              <li>❌ Admin panel</li>
+            </ul>
+          </div>
+          <div class="bg-red-50 rounded-xl p-3 border border-red-200">
+            <p class="font-bold text-red-700 mb-2">Admin (You)</p>
+            <ul class="text-xs text-gray-600 space-y-1">
+              <li>✅ Everything</li>
+              <li>✅ Staff management</li>
+              <li>✅ Database viewer</li>
+              <li>✅ Delete orders</li>
+              <li>✅ VAT reports</li>
+              <li>✅ Export data</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kiosk settings -->
+      <div class="bg-white rounded-xl shadow p-5">
+        <h3 class="font-bold mb-3"><i class="fas fa-tablet-alt mr-2 text-orange-600"></i>Tablet / Kiosk Settings</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-orange-50 rounded-xl p-4 border border-orange-200">
+            <p class="font-bold text-orange-700 mb-1">Kiosk Lock Mode</p>
+            <p class="text-xs text-gray-500 mb-3">Locks the tablet into full-screen POS. Staff need the kiosk unlock password to exit. Prevents personal use of company tablets.</p>
+            <div class="flex items-center gap-3">
+              <button @click="enableKiosk" class="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-700 transition">
+                <i class="fas fa-lock mr-1"></i>Enable Kiosk Mode
+              </button>
+              <button @click="disableKiosk" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-300 transition">
+                Disable
+              </button>
+            </div>
+          </div>
+          <div class="bg-blue-50 rounded-xl p-4 border border-blue-200">
+            <p class="font-bold text-blue-700 mb-1">Screen Links</p>
+            <p class="text-xs text-gray-500 mb-3">Open each screen in a new tab. Bookmark these on your tablets.</p>
+            <div class="space-y-2">
+              <a href="/kds.html" target="_blank" class="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800"><i class="fas fa-fire w-4"></i>Kitchen Display (KDS)</a>
+              <a href="/table-order.html" target="_blank" class="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800"><i class="fas fa-chair w-4"></i>Table Ordering</a>
+              <a href="/pickup.html" target="_blank" class="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800"><i class="fas fa-bell w-4"></i>Pickup Display</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== DATABASE VIEWER ========== -->
+    <div v-if="activeTab==='database'&&user.role==='admin'" class="slide-in space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-xl font-black">🗄️ Database Viewer</h2>
+        <p class="text-xs text-red-500 font-semibold">⚠️ Master password required — Admin eyes only</p>
+      </div>
+
+      <!-- Password entry -->
+      <div v-if="!dbUnlocked" class="bg-white rounded-xl shadow p-6 max-w-md">
+        <h3 class="font-bold mb-3"><i class="fas fa-lock mr-2 text-red-600"></i>Enter Master Password</h3>
+        <input v-model="dbMasterPw" type="password" placeholder="Master password"
+          @keyup.enter="unlockDB"
+          class="w-full border-2 rounded-xl px-4 py-3 mb-3 focus:border-red-500 focus:outline-none">
+        <button @click="unlockDB" class="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition">
+          <i class="fas fa-unlock mr-2"></i>Access Database
+        </button>
+        <p class="text-xs text-gray-400 mt-3 text-center">This is the MASTER_PASSWORD set in Railway Variables</p>
+      </div>
+
+      <!-- Database content -->
+      <div v-else class="space-y-4">
+        <!-- Stats cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div v-for="(count, table) in dbStats" :key="table"
+            @click="viewTable(table)"
+            :class="dbTable===table?'ring-2 ring-orange-500':''"
+            class="bg-white rounded-xl shadow p-4 text-center cursor-pointer hover:shadow-md transition">
+            <p class="text-2xl font-black text-orange-600">{{ count }}</p>
+            <p class="text-xs text-gray-500 capitalize mt-1">{{ table.replace('_',' ') }}</p>
+          </div>
+        </div>
+
+        <!-- Table viewer -->
+        <div class="bg-white rounded-xl shadow p-4">
+          <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+            <div class="flex items-center gap-3">
+              <h3 class="font-bold capitalize">{{ dbTable }}</h3>
+              <span class="text-xs text-gray-400">({{ dbTotal }} total records)</span>
+            </div>
+            <div class="flex gap-2">
+              <select v-model="dbTable" @change="loadDBTable" class="border rounded-lg px-3 py-1.5 text-sm">
+                <option value="orders">Orders</option>
+                <option value="customers">Customers</option>
+                <option value="menu_items">Menu Items</option>
+                <option value="users">Staff</option>
+                <option value="staff_activity">Activity Log</option>
+              </select>
+              <button @click="loadDBTable" class="text-orange-600 border rounded-lg px-3 py-1.5 text-sm hover:bg-orange-50">
+                <i class="fas fa-sync"></i>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="dbLoading" class="text-center py-8 text-gray-400">
+            <i class="fas fa-spinner fa-spin text-3xl"></i>
+          </div>
+          <div v-else class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead class="bg-gray-50 text-gray-400 uppercase">
+                <tr>
+                  <th class="px-3 py-2 text-left">ID</th>
+                  <th v-if="dbTable==='orders'" class="px-3 py-2 text-left">Order#</th>
+                  <th class="px-3 py-2 text-left">Name / Info</th>
+                  <th class="px-3 py-2 text-left">Details</th>
+                  <th class="px-3 py-2 text-left">Date</th>
+                  <th class="px-3 py-2 text-left">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in dbRows" :key="row.id" class="border-t hover:bg-red-50 transition">
+                  <td class="px-3 py-2 font-mono text-gray-400">{{ row.id }}</td>
+                  <td v-if="dbTable==='orders'" class="px-3 py-2 font-bold text-orange-600">#{{ row.order_number }}</td>
+                  <td class="px-3 py-2 font-semibold">{{ row.name || row.customer_name || row.staff_name || row.key || '-' }}</td>
+                  <td class="px-3 py-2 text-gray-500 max-w-xs truncate">
+                    <span v-if="dbTable==='orders'">€{{ (row.total||0).toFixed(2) }} · {{ row.status }} · {{ row.mode }}</span>
+                    <span v-else-if="dbTable==='customers'">{{ row.phone }} · {{ row.total_orders }} orders</span>
+                    <span v-else-if="dbTable==='users'">{{ row.role }} · {{ row.active ? 'Active' : 'Inactive' }}</span>
+                    <span v-else>{{ row.value || row.action || '-' }}</span>
+                  </td>
+                  <td class="px-3 py-2 text-gray-400">{{ fmtDate(row.timestamp || row.created_at || row.updated_at) }}</td>
+                  <td class="px-3 py-2">
+                    <button v-if="['orders','customers','menu_items'].includes(dbTable)"
+                      @click="dbDeleteRow(row)"
+                      class="text-red-400 hover:text-red-600 transition text-xs border border-red-200 px-2 py-1 rounded hover:bg-red-50">
+                      <i class="fas fa-trash mr-1"></i>Delete
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <!-- Pagination -->
+            <div class="flex justify-between items-center mt-3 pt-3 border-t">
+              <button @click="dbOffset=Math.max(0,dbOffset-50);loadDBTable()" :disabled="dbOffset===0"
+                class="text-sm px-3 py-1.5 border rounded-lg disabled:opacity-30 hover:bg-gray-50">
+                ← Previous
+              </button>
+              <span class="text-xs text-gray-400">{{ dbOffset+1 }}–{{ Math.min(dbOffset+50,dbTotal) }} of {{ dbTotal }}</span>
+              <button @click="dbOffset+=50;loadDBTable()" :disabled="dbOffset+50>=dbTotal"
+                class="text-sm px-3 py-1.5 border rounded-lg disabled:opacity-30 hover:bg-gray-50">
+                Next →
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -680,7 +1056,7 @@
 
 <!-- TOAST -->
 <div v-if="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 slide-in">
-  <div :class="toast.type==='success'?'bg-gray-900':'bg-red-600'" class="text-white px-6 py-3 rounded-2xl shadow-2xl font-semibold text-sm whitespace-nowrap">
+  <div :class="{'bg-gray-900':toast.type==='success','bg-red-600':toast.type==='error','bg-yellow-500 text-gray-900':toast.type==='warning'}" class="px-6 py-3 rounded-2xl shadow-2xl font-semibold text-sm whitespace-nowrap text-white">
     {{ toast.msg }}
   </div>
 </div>
@@ -718,6 +1094,17 @@ createApp({
     newItem:{name:'',price:'',vat_rate:'',course:'mains',allergens:''},
     deleteDialog:null,deletePassword:'',
     toast:null,
+    isOnline:navigator.onLine,
+    offlineQueue:0,
+    // Kiosk
+    kioskLocked:localStorage.getItem('raha-kiosk-mode')==='true',
+    kioskUnlockInput:'',kioskError:'',
+    // Staff management
+    staffList:[],newStaff:{name:'',pin:'',role:'front'},staffAdminPin:'',
+    // Customer import
+    importCSV:'',importResult:null,importLoading:false,
+    // Database viewer
+    dbMasterPw:'',dbTable:'orders',dbRows:[],dbTotal:0,dbLoading:false,dbOffset:0,dbUnlocked:false,dbStats:{},
     activeCategory:'',showCombos:true,
     foundCustomer:null,
     incomingCall:null,
@@ -727,18 +1114,20 @@ createApp({
       const all=[
         {key:'dashboard',label:'Dashboard',icon:'fas fa-home',badge:0},
         {key:'pos',label:'New Order',icon:'fas fa-cash-register',badge:0},
-        {key:'tables',label:'Tables',icon:'fas fa-table',badge:0},
+        {key:'tables',label:'Tables',icon:'fas fa-chair',badge:0},
         {key:'orders',label:'Orders',icon:'fas fa-list',badge:this.pendingCount},
         {key:'sales',label:'Sales',icon:'fas fa-chart-bar',badge:0},
         {key:'customers',label:'Customers',icon:'fas fa-users',badge:0},
+        {key:'staff',label:'Staff',icon:'fas fa-id-badge',badge:0},
+        {key:'database',label:'Database',icon:'fas fa-database',badge:0},
         {key:'admin',label:'Admin',icon:'fas fa-cog',badge:0},
       ];
       if(!this.user)return[];
       const role=this.user.role;
       if(role==='chef')return[all[0],all[2],all[3]];
-      if(role==='front')return all.slice(0,5);
-      if(role==='manager')return all.slice(0,6);
-      return all;
+      if(role==='front')return[all[0],all[1],all[2],all[3]];
+      if(role==='manager')return[all[0],all[1],all[2],all[3],all[4],all[5]];
+      return all; // admin gets everything
     },
 
     filteredOrders(){
@@ -805,7 +1194,7 @@ createApp({
         });
       }catch(e){}
     },
-    showToast(msg,type='success'){this.toast={msg,type};setTimeout(()=>this.toast=null,3000)},
+    showToast(msg,type='success'){this.toast={msg,type};setTimeout(()=>this.toast=null,type==='warning'?5000:3000)},
     statusClass(s){return{pending:'bg-yellow-100 text-yellow-800',cooking:'bg-blue-100 text-blue-800',ready:'bg-green-100 text-green-800',completed:'bg-gray-100 text-gray-700',cancelled:'bg-red-100 text-red-700'}[s]||'bg-gray-100 text-gray-700'},
     fmtTime(ts){return ts?new Date(ts).toLocaleTimeString('en-IE',{hour:'2-digit',minute:'2-digit'}):''},
     fmtDate(d){return d?new Date(d).toLocaleDateString('en-IE',{weekday:'short',day:'numeric',month:'short'}):''},
@@ -818,6 +1207,8 @@ createApp({
         if(d.success){
           this.playBell('login');
           this.user={...d.user,pin:this.loginPin};
+          const welcomes={admin:'Welcome back, Admin! 🔑',manager:'Welcome back! 📊',chef:'Ready to cook! 🍳',front:'Welcome! Let\'s go! 🍛'};
+          this.showToast(welcomes[d.user.role]||`Welcome, ${d.user.name}! 👋`);
           this.connectSocket();
           await Promise.all([this.loadMenu(),this.loadStats(),this.loadOrders(),this.loadTables()]);
         }else{this.loginError=d.message||'Invalid PIN'}
@@ -843,9 +1234,19 @@ createApp({
       if(key==='sales')this.loadSales();
       if(key==='customers')this.loadCustomers();
       if(key==='tables')this.loadTables();
+      if(key==='staff')this.loadStaff();
       if(key==='orders')this.loadOrders();
     },
-    async loadMenu(){try{const r=await fetch(`${this.apiUrl}/menu`);this.menu=await r.json()}catch(e){}},
+    async loadMenu(){
+      try{
+        const r=await fetch(`${this.apiUrl}/menu`);
+        this.menu=await r.json();
+        // Cache menu for offline use
+        if(navigator.serviceWorker.controller){
+          navigator.serviceWorker.controller.postMessage({type:'CACHE_MENU',menu:this.menu});
+        }
+      }catch(e){console.log('Menu load failed, using cache')}
+    },
     async loadStats(){try{const r=await fetch(`${this.apiUrl}/dashboard/stats?role=${this.user.role}`);this.stats=await r.json()}catch(e){}},
     async loadOrders(){try{const r=await fetch(`${this.apiUrl}/orders?limit=100&role=${this.user.role}`);this.orders=await r.json()}catch(e){}},
     async loadTables(){try{const r=await fetch(`${this.apiUrl}/tables`);this.tables=await r.json()}catch(e){}},
@@ -877,7 +1278,11 @@ createApp({
         const r=await fetch(`${this.apiUrl}/orders`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(order)});
         const d=await r.json();
         if(d.success){
-          this.showToast(`Order #${d.order.order_number} placed! 🎉`);
+          if(d.offline){
+            this.showToast(`📦 Offline order saved — will sync when online`,'warning');
+          }else{
+            this.showToast(`Order #${d.order.order_number} placed! 🎉`);
+          }
           this.cart=[];this.custName='';this.custPhone='';this.custAddress='';this.notes='';this.tableNumber=null;
           this.activeTab='dashboard';
           this.loadOrders();this.loadTables();this.loadStats();
@@ -978,6 +1383,114 @@ createApp({
           this.incomingCall={number,customer:data.length>0?data[0]:null};
         });
     },
+
+    // ===== KIOSK =====
+    enableKiosk(){
+      localStorage.setItem('raha-kiosk-mode','true');
+      if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+      this.showToast('Kiosk mode enabled — unlock password required to exit');
+    },
+    disableKiosk(){
+      localStorage.removeItem('raha-kiosk-mode');
+      if(document.exitFullscreen) document.exitFullscreen();
+      this.kioskLocked=false;
+      this.showToast('Kiosk mode disabled');
+    },
+    async unlockKiosk(){
+      if(!this.kioskUnlockInput){this.kioskError='Enter unlock password';return}
+      try{
+        const r=await fetch(`${this.apiUrl}/kiosk/verify-unlock`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:this.kioskUnlockInput})});
+        const d=await r.json();
+        if(d.success){this.kioskLocked=false;this.kioskUnlockInput='';this.kioskError='';}
+        else{this.kioskError='Wrong password';this.kioskUnlockInput='';}
+      }catch(e){this.kioskError='Cannot connect';}
+    },
+
+    // ===== STAFF =====
+    async loadStaff(){
+      try{const r=await fetch(`${this.apiUrl}/staff`);this.staffList=await r.json();}catch(e){}
+    },
+    async addStaff(){
+      if(!this.newStaff.name||!this.newStaff.pin||this.newStaff.pin.length!==4){this.showToast('Name and 4-digit PIN required','error');return}
+      if(!this.staffAdminPin){this.showToast('Enter your admin PIN to confirm','error');return}
+      try{
+        const r=await fetch(`${this.apiUrl}/staff`,{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({...this.newStaff,admin_pin:this.staffAdminPin})});
+        const d=await r.json();
+        if(d.success){
+          this.showToast(`${this.newStaff.name} added! They can now login with their PIN 🎉`);
+          this.newStaff={name:'',pin:'',role:'front'};
+          this.staffAdminPin='';
+          this.loadStaff();
+        }else{this.showToast(d.error||'Failed to add staff','error');}
+      }catch(e){this.showToast('Error adding staff','error');}
+    },
+    async toggleStaff(s){
+      if(!this.staffAdminPin){this.showToast('Enter your admin PIN first','error');return}
+      try{
+        const r=await fetch(`${this.apiUrl}/staff/${s.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({name:s.name,role:s.role,active:!s.active,admin_pin:this.staffAdminPin})});
+        const d=await r.json();
+        if(d.success){this.showToast(`${s.name} ${s.active?'deactivated':'reactivated'}`);this.loadStaff();}
+        else{this.showToast(d.error||'Failed','error');}
+      }catch(e){this.showToast('Error','error');}
+    },
+
+    // ===== CUSTOMER IMPORT =====
+    handleCSVFile(event){
+      const file=event.target.files[0];
+      if(!file)return;
+      const reader=new FileReader();
+      reader.onload=(e)=>{this.importCSV=e.target.result;};
+      reader.readAsText(file);
+    },
+    async importCustomers(){
+      if(!this.importCSV){return;}
+      this.importLoading=true;this.importResult=null;
+      try{
+        const lines=this.importCSV.trim().split('\n');
+        const headers=lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/[^a-z_]/g,''));
+        const customers=lines.slice(1).map(line=>{
+          const vals=line.split(',').map(v=>v.trim().replace(/^"|"$/g,''));
+          const obj={};
+          headers.forEach((h,i)=>{obj[h]=vals[i]||'';});
+          return obj;
+        }).filter(c=>c.name);
+        const r=await fetch(`${this.apiUrl}/customers/import`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customers})});
+        this.importResult=await r.json();
+        if(this.importResult.success)this.loadCustomers();
+      }catch(e){this.importResult={success:false,error:'Parse error — check CSV format'};}
+      finally{this.importLoading=false;}
+    },
+
+    // ===== DATABASE VIEWER =====
+    async unlockDB(){
+      if(!this.dbMasterPw){return;}
+      try{
+        const r=await fetch(`${this.apiUrl}/master/tables?password=${encodeURIComponent(this.dbMasterPw)}`);
+        if(r.ok){this.dbStats=await r.json();this.dbUnlocked=true;this.loadDBTable();}
+        else{this.showToast('Wrong master password','error');}
+      }catch(e){this.showToast('Cannot connect','error');}
+    },
+    async viewTable(table){this.dbTable=table;this.dbOffset=0;await this.loadDBTable();},
+    async loadDBTable(){
+      this.dbLoading=true;
+      try{
+        const r=await fetch(`${this.apiUrl}/master/table/${this.dbTable}?password=${encodeURIComponent(this.dbMasterPw)}&limit=50&offset=${this.dbOffset}`);
+        const d=await r.json();
+        this.dbRows=d.rows||[];this.dbTotal=d.total||0;
+      }catch(e){}
+      finally{this.dbLoading=false;}
+    },
+    async dbDeleteRow(row){
+      if(!confirm(`Permanently delete this record (ID: ${row.id})? This cannot be undone.`))return;
+      try{
+        const r=await fetch(`${this.apiUrl}/master/table/${this.dbTable}/${row.id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:this.dbMasterPw})});
+        if(r.ok){this.showToast('Record deleted');this.loadDBTable();}
+        else{this.showToast('Delete failed','error');}
+      }catch(e){this.showToast('Error','error');}
+    },
+
     updateTime(){this.currentTime=new Date().toLocaleTimeString('en-IE',{hour:'2-digit',minute:'2-digit'})},
 
   },
