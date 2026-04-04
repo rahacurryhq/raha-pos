@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAHA Admin Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-900 text-white">
+    <div id="app">
+        <!-- Login Screen -->
+        <div v-if="!user || user.role !== 'admin'" class="min-h-screen flex items-center justify-center">
+            <div class="bg-gray-800 rounded-2xl shadow-2xl p-10 max-w-md w-full">
+                <div class="text-center mb-8">
+                    <h1 class="text-4xl font-bold text-orange-400 mb-2">🔐 Admin Monitor</h1>
+                    <p class="text-gray-400">Remote Monitoring Dashboard</p>
+                    <div v-if="connectionStatus === 'connected'" class="mt-3 flex items-center justify-center space-x-2">
+                        <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span class="text-xs text-green-400">Server Online</span>
+                    </div>
+                    <div v-else class="mt-3 flex items-center justify-center space-x-2">
+                        <div class="w-2 h-2 bg-red-500 rounded-full"></div>
+                        <span class="text-xs text-red-400">Server Offline</span>
+                    </div>
+                </div>
+                <div class="mb-6">
+                    <label class="block text-gray-300 font-semibold mb-2">Admin PIN:</label>
+                    <input 
+                        v-model="loginPin" 
+                        type="password" 
+                        maxlength="4"
+                        @keyup.enter="login"
+                        class="w-full px-4 py-3 text-2xl text-center bg-gray-700 text-white border-2 border-gray-600 rounded-lg focus:border-orange-500 focus:outline-none"
+                        placeholder="••••"
+                        autofocus>
+                </div>
+                <button @click="login" :disabled="loggingIn" class="w-full bg-orange-600 text-white py-3 rounded-lg font-bold text-lg hover:bg-orange-700 transition disabled:bg-gray-600">
+                    <span v-if="loggingIn"><i class="fas fa-spinner fa-spin mr-2"></i>Verifying...</span>
+                    <span v-else><i class="fas fa-shield-alt mr-2"></i>Access Monitor</span>
+                </button>
+                <div v-if="loginError" class="mt-4 p-3 bg-red-900 bg-opacity-50 text-red-300 rounded-lg text-sm">
+                    {{ loginError }}
+                </div>
+                <div class="mt-6 text-center text-sm text-gray-500">
+                    <p><i class="fas fa-lock mr-1"></i> Admin access only (PIN: 9999)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Dashboard -->
+        <div v-else class="min-h-screen pb-8">
+            <!-- Top Bar -->
+            <nav class="bg-gradient-to-r from-orange-600 to-red-600 shadow-lg sticky top-0 z-40">
+                <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+                    <div class="flex items-center space-x-4">
+                        <h1 class="text-2xl font-bold">🔐 Admin Monitor</h1>
+                        <span class="text-sm opacity-75">{{ user.name }}</span>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="text-right text-sm">
+                            <div>{{ currentDate }}</div>
+                            <div class="text-xs opacity-75">{{ currentTime }}</div>
+                        </div>
+                        <div v-if="connectionStatus === 'connected'" class="flex items-center space-x-2 bg-green-600 px-3 py-1 rounded">
+                            <div class="w-2 h-2 bg-green-200 rounded-full animate-pulse"></div>
+                            <span class="text-xs">Live</span>
+                        </div>
+                        <div v-else class="flex items-center space-x-2 bg-red-600 px-3 py-1 rounded">
+                            <div class="w-2 h-2 bg-red-200 rounded-full"></div>
+                            <span class="text-xs">Offline</span>
+                        </div>
+                        <button @click="refresh" class="bg-white bg-opacity-20 px-4 py-2 rounded hover:bg-opacity-30 transition">
+                            <i class="fas fa-sync-alt" :class="{'fa-spin': refreshing}"></i>
+                        </button>
+                        <button @click="logout" class="bg-white text-orange-600 px-4 py-2 rounded font-semibold hover:bg-orange-50 transition">
+                            <i class="fas fa-sign-out-alt mr-2"></i>Exit
+                        </button>
+                    </div>
+                </div>
+            </nav>
+
+            <div class="container mx-auto px-4 py-6">
+                <!-- Live Stats Dashboard -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-gradient-to-br from-green-600 to-green-700 rounded-lg shadow-lg p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-green-200 text-sm mb-1">Today's Revenue</p>
+                                <p class="text-4xl font-bold">€{{ stats.today_revenue.toFixed(2) }}</p>
+                                <p class="text-green-200 text-xs mt-1">VAT: €{{ stats.today_vat?.toFixed(2) || '0.00' }}</p>
+                                <p class="text-green-200 text-xs">Net: €{{ stats.today_net?.toFixed(2) || '0.00' }}</p>
+                            </div>
+                            <i class="fas fa-euro-sign text-5xl text-green-300 opacity-50"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg shadow-lg p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-blue-200 text-sm mb-1">Today's Orders</p>
+                                <p class="text-4xl font-bold">{{ stats.today_orders }}</p>
+                                <p class="text-blue-200 text-xs mt-1">Average: €{{ avgOrderValue }}</p>
+                            </div>
+                            <i class="fas fa-receipt text-5xl text-blue-300 opacity-50"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-yellow-600 to-yellow-700 rounded-lg shadow-lg p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-yellow-200 text-sm mb-1">Active Orders</p>
+                                <p class="text-4xl font-bold">{{ stats.pending_orders + stats.cooking_orders }}</p>
+                                <p class="text-yellow-200 text-xs mt-1">
+                                    Pending: {{ stats.pending_orders }} | Cooking: {{ stats.cooking_orders }}
+                                </p>
+                            </div>
+                            <i class="fas fa-clock text-5xl text-yellow-300 opacity-50"></i>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-purple-600 to-purple-700 rounded-lg shadow-lg p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-purple-200 text-sm mb-1">Ready Orders</p>
+                                <p class="text-4xl font-bold">{{ stats.ready_orders }}</p>
+                                <p class="text-purple-200 text-xs mt-1">Awaiting pickup</p>
+                            </div>
+                            <i class="fas fa-bell text-5xl text-purple-300 opacity-50"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Navigation -->
+                <div class="bg-gray-800 rounded-lg shadow-lg mb-6">
+                    <div class="flex border-b border-gray-700">
+                        <button @click="activeTab = 'orders'" 
+                            :class="['px-6 py-3 font-semibold transition', activeTab === 'orders' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white']">
+                            <i class="fas fa-list mr-2"></i>Live Orders
+                        </button>
+                        <button @click="activeTab = 'vat'" 
+                            :class="['px-6 py-3 font-semibold transition', activeTab === 'vat' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white']">
+                            <i class="fas fa-percent mr-2"></i>VAT Reports
+                        </button>
+                        <button @click="activeTab = 'activity'" 
+                            :class="['px-6 py-3 font-semibold transition', activeTab === 'activity' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white']">
+                            <i class="fas fa-history mr-2"></i>Activity Log
+                        </button>
+                        <button @click="activeTab = 'settings'" 
+                            :class="['px-6 py-3 font-semibold transition', activeTab === 'settings' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white']">
+                            <i class="fas fa-cog mr-2"></i>Settings
+                        </button>
+                    </div>
+
+                    <!-- Live Orders Tab -->
+                    <div v-if="activeTab === 'orders'" class="p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-xl font-bold">Live Orders</h2>
+                            <div class="flex gap-2">
+                                <select v-model="orderFilter" class="bg-gray-700 text-white px-4 py-2 rounded">
+                                    <option value="">All Orders</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="cooking">Cooking</option>
+                                    <option value="ready">Ready</option>
+                                    <option value="completed">Completed</option>
+                                </select>
+                                <button @click="loadOrders" class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-gray-700">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left">Order #</th>
+                                        <th class="px-4 py-3 text-left">Time</th>
+                                        <th class="px-4 py-3 text-left">Customer</th>
+                                        <th class="px-4 py-3 text-left">Items</th>
+                                        <th class="px-4 py-3 text-left">Total</th>
+                                        <th class="px-4 py-3 text-left">VAT</th>
+                                        <th class="px-4 py-3 text-left">Status</th>
+                                        <th class="px-4 py-3 text-left">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="order in filteredOrders" :key="order.id" 
+                                        class="border-b border-gray-700 hover:bg-gray-750">
+                                        <td class="px-4 py-3 font-bold text-orange-400">#{{ order.order_number }}</td>
+                                        <td class="px-4 py-3 text-sm">{{ formatTime(order.timestamp) }}</td>
+                                        <td class="px-4 py-3">
+                                            <div>{{ order.customer_name }}</div>
+                                            <div class="text-xs text-gray-400">{{ order.customer_phone }}</div>
+                                        </td>
+                                        <td class="px-4 py-3 text-sm">
+                                            <button @click="viewOrderDetails(order)" class="text-blue-400 hover:text-blue-300">
+                                                {{ order.items.length }} items
+                                            </button>
+                                        </td>
+                                        <td class="px-4 py-3 font-bold">€{{ order.total.toFixed(2) }}</td>
+                                        <td class="px-4 py-3 text-sm text-gray-400">€{{ order.vat_amount?.toFixed(2) || '0.00' }}</td>
+                                        <td class="px-4 py-3">
+                                            <span :class="getStatusBadge(order.status)" class="px-3 py-1 rounded-full text-xs font-bold">
+                                                {{ order.status.toUpperCase() }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            <button @click="confirmDeleteOrder(order)" class="text-red-400 hover:text-red-300">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- VAT Reports Tab -->
+                    <div v-if="activeTab === 'vat'" class="p-6">
+                        <h2 class="text-xl font-bold mb-4">VAT Reports & Management</h2>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <!-- Generate Report -->
+                            <div class="bg-gray-700 rounded-lg p-6">
+                                <h3 class="font-bold text-lg mb-4">Generate VAT Report</h3>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="block text-sm mb-1 text-gray-300">From Date:</label>
+                                        <input v-model="vatReportFrom" type="date" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm mb-1 text-gray-300">To Date:</label>
+                                        <input v-model="vatReportTo" type="date" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white">
+                                    </div>
+                                    <button @click="generateVATReport" class="w-full bg-purple-600 text-white py-2 rounded hover:bg-purple-700">
+                                        <i class="fas fa-file-alt mr-2"></i>Generate Report
+                                    </button>
+                                </div>
+                                <div v-if="vatReport" class="mt-4 p-4 bg-gray-800 rounded">
+                                    <h4 class="font-bold mb-3 text-purple-400">Report Summary</h4>
+                                    <div class="space-y-2">
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Total Orders:</span>
+                                            <span class="font-bold">{{ vatReport.total_orders }}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Total Revenue:</span>
+                                            <span class="font-bold text-green-400">€{{ vatReport.total_revenue.toFixed(2) }}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Total VAT:</span>
+                                            <span class="font-bold text-purple-400">€{{ vatReport.total_vat.toFixed(2) }}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Net Amount:</span>
+                                            <span class="font-bold">€{{ vatReport.total_net.toFixed(2) }}</span>
+                                        </div>
+                                    </div>
+                                    <button @click="exportVATReport" class="w-full mt-4 bg-green-600 text-white py-2 rounded hover:bg-green-700">
+                                        <i class="fas fa-download mr-2"></i>Export to CSV
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- VAT Periods -->
+                            <div class="bg-gray-700 rounded-lg p-6">
+                                <h3 class="font-bold text-lg mb-4">VAT Periods</h3>
+                                <button @click="loadVATPeriods" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 mb-3">
+                                    <i class="fas fa-sync mr-2"></i>Load VAT Periods
+                                </button>
+                                <div v-if="vatPeriods.length > 0" class="space-y-2 mb-4 max-h-60 overflow-y-auto">
+                                    <div v-for="period in vatPeriods" :key="period.id" class="p-3 bg-gray-800 rounded">
+                                        <div class="flex justify-between items-start">
+                                            <div>
+                                                <p class="font-semibold text-blue-400">{{ period.vat_rate }}% VAT</p>
+                                                <p class="text-xs text-gray-400">
+                                                    {{ formatDate(period.start_date) }} → {{ period.end_date ? formatDate(period.end_date) : 'Present' }}
+                                                </p>
+                                                <p class="text-xs text-gray-500 mt-1">{{ period.description }}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="border-t border-gray-600 pt-3">
+                                    <h4 class="font-semibold mb-2 text-sm">Add New Period</h4>
+                                    <div class="space-y-2">
+                                        <input v-model="newVATPeriod.start_date" type="date" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-sm text-white">
+                                        <input v-model="newVATPeriod.end_date" type="date" placeholder="End (optional)" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-sm text-white">
+                                        <input v-model="newVATPeriod.vat_rate" type="number" step="0.1" placeholder="VAT rate %" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-sm text-white">
+                                        <input v-model="newVATPeriod.description" type="text" placeholder="Description" class="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-sm text-white">
+                                        <button @click="addVATPeriod" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 text-sm">
+                                            <i class="fas fa-plus mr-2"></i>Add Period
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Activity Log Tab -->
+                    <div v-if="activeTab === 'activity'" class="p-6">
+                        <h2 class="text-xl font-bold mb-4">Staff Activity Log</h2>
+                        <div class="bg-gray-700 rounded p-4 text-center text-gray-400">
+                            <i class="fas fa-info-circle text-4xl mb-2"></i>
+                            <p>Activity logging coming soon</p>
+                            <p class="text-sm mt-2">Track staff actions, login times, and system events</p>
+                        </div>
+                    </div>
+
+                    <!-- Settings Tab -->
+                    <div v-if="activeTab === 'settings'" class="p-6">
+                        <h2 class="text-xl font-bold mb-4">System Settings</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-gray-700 rounded-lg p-6">
+                                <h3 class="font-bold mb-4">System Info</h3>
+                                <div class="space-y-2 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Server Status:</span>
+                                        <span :class="connectionStatus === 'connected' ? 'text-green-400' : 'text-red-400'">
+                                            {{ connectionStatus === 'connected' ? 'Online' : 'Offline' }}
+                                        </span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Menu Items:</span>
+                                        <span>{{ menuItemCount }}</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Total Customers:</span>
+                                        <span>{{ stats.total_customers || 0 }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bg-gray-700 rounded-lg p-6">
+                                <h3 class="font-bold mb-4">Quick Actions</h3>
+                                <div class="space-y-2">
+                                    <button @click="refresh" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
+                                        <i class="fas fa-sync mr-2"></i>Refresh All Data
+                                    </button>
+                                    <button @click="openKDS" class="w-full bg-purple-600 text-white py-2 rounded hover:bg-purple-700">
+                                        <i class="fas fa-tv mr-2"></i>Open Kitchen Display
+                                    </button>
+                                    <button @click="openPOS" class="w-full bg-orange-600 text-white py-2 rounded hover:bg-orange-700">
+                                        <i class="fas fa-cash-register mr-2"></i>Open Counter POS
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Order Details Modal -->
+                <div v-if="selectedOrder" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div class="bg-gray-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                        <div class="p-6">
+                            <div class="flex justify-between items-start mb-4">
+                                <div>
+                                    <h2 class="text-2xl font-bold">Order #{{ selectedOrder.order_number }}</h2>
+                                    <p class="text-gray-400 text-sm">{{ formatDateTime(selectedOrder.timestamp) }}</p>
+                                </div>
+                                <button @click="selectedOrder = null" class="text-gray-400 hover:text-white">
+                                    <i class="fas fa-times text-2xl"></i>
+                                </button>
+                            </div>
+                            <div class="space-y-4">
+                                <div class="bg-gray-700 rounded p-4">
+                                    <h3 class="font-bold mb-2">Customer</h3>
+                                    <p>{{ selectedOrder.customer_name }}</p>
+                                    <p class="text-sm text-gray-400">{{ selectedOrder.customer_phone }}</p>
+                                    <p v-if="selectedOrder.customer_address" class="text-sm text-gray-400">{{ selectedOrder.customer_address }}</p>
+                                </div>
+                                <div class="bg-gray-700 rounded p-4">
+                                    <h3 class="font-bold mb-2">Items</h3>
+                                    <div v-for="item in selectedOrder.items" :key="item.id" class="flex justify-between py-2 border-b border-gray-600">
+                                        <span>{{ item.name }} x{{ item.qty }}</span>
+                                        <span>€{{ (item.price * item.qty).toFixed(2) }}</span>
+                                    </div>
+                                    <div class="mt-3 space-y-1">
+                                        <div class="flex justify-between">
+                                            <span>Subtotal:</span>
+                                            <span>€{{ selectedOrder.subtotal.toFixed(2) }}</span>
+                                        </div>
+                                        <div v-if="selectedOrder.delivery_charge > 0" class="flex justify-between">
+                                            <span>Delivery:</span>
+                                            <span>€{{ selectedOrder.delivery_charge.toFixed(2) }}</span>
+                                        </div>
+                                        <div class="flex justify-between text-lg font-bold pt-2 border-t border-gray-600">
+                                            <span>Total:</span>
+                                            <span class="text-green-400">€{{ selectedOrder.total.toFixed(2) }}</span>
+                                        </div>
+                                        <div class="flex justify-between text-sm text-gray-400">
+                                            <span>VAT ({{ selectedOrder.vat_rate }}%):</span>
+                                            <span>€{{ selectedOrder.vat_amount?.toFixed(2) || '0.00' }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="selectedOrder.special_instructions" class="bg-gray-700 rounded p-4">
+                                    <h3 class="font-bold mb-2">Special Instructions</h3>
+                                    <p class="text-sm">{{ selectedOrder.special_instructions }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Confirm Delete Modal -->
+                <div v-if="deleteConfirm" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+                    <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full">
+                        <h3 class="text-xl font-bold mb-4">Delete Order?</h3>
+                        <p class="mb-4">Delete Order #{{ deleteConfirm.order_number }}?</p>
+                        <div class="mb-4">
+                            <label class="flex items-center mb-2">
+                                <input v-model="deleteType" type="radio" value="soft" class="mr-2">
+                                <span>Soft Delete (hide from list, keep in database)</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input v-model="deleteType" type="radio" value="permanent" class="mr-2">
+                                <span class="text-red-400">Permanent Delete (remove completely)</span>
+                            </label>
+                        </div>
+                        <div class="mb-4">
+                            <label class="block mb-2">Confirm Admin PIN:</label>
+                            <input v-model="deletePIN" type="password" maxlength="4" class="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded text-white" autofocus>
+                        </div>
+                        <div class="flex gap-3">
+                            <button @click="deleteConfirm = null; deletePIN = ''" class="flex-1 bg-gray-600 text-white py-2 rounded hover:bg-gray-700">
+                                Cancel
+                            </button>
+                            <button @click="deleteOrder" class="flex-1 bg-red-600 text-white py-2 rounded hover:bg-red-700">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Toast -->
+                <div v-if="toast" class="fixed bottom-4 right-4 z-50">
+                    <div :class="['px-6 py-4 rounded-lg shadow-lg text-white', toast.type === 'success' ? 'bg-green-600' : 'bg-red-600']">
+                        <i :class="['fas mr-2', toast.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle']"></i>
+                        {{ toast.message }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    apiUrl: window.location.origin + '/api',
+                    socket: null,
+                    connectionStatus: 'disconnected',
+                    
+                    user: null,
+                    loginPin: '',
+                    loginError: '',
+                    loggingIn: false,
+                    
+                    currentTime: '',
+                    currentDate: '',
+                    
+                    activeTab: 'orders',
+                    orderFilter: '',
+                    refreshing: false,
+                    
+                    stats: {
+                        today_orders: 0,
+                        today_revenue: 0,
+                        today_vat: 0,
+                        today_net: 0,
+                        pending_orders: 0,
+                        cooking_orders: 0,
+                        ready_orders: 0,
+                        total_customers: 0
+                    },
+                    
+                    orders: [],
+                    selectedOrder: null,
+                    deleteConfirm: null,
+                    deletePIN: '',
+                    deleteType: 'soft',
+                    
+                    vatReportFrom: '',
+                    vatReportTo: '',
+                    vatReport: null,
+                    vatPeriods: [],
+                    newVATPeriod: {
+                        start_date: '',
+                        end_date: '',
+                        vat_rate: '',
+                        description: ''
+                    },
+                    
+                    menuItemCount: 0,
+                    toast: null
+                };
+            },
+            
+            computed: {
+                filteredOrders() {
+                    if (!this.orderFilter) return this.orders;
+                    return this.orders.filter(o => o.status === this.orderFilter);
+                },
+                avgOrderValue() {
+                    if (this.stats.today_orders === 0) return '0.00';
+                    return (this.stats.today_revenue / this.stats.today_orders).toFixed(2);
+                }
+            },
+            
+            methods: {
+                async login() {
+                    if (!this.loginPin || this.loginPin.length !== 4) {
+                        this.loginError = 'Enter 4-digit PIN';
+                        return;
+                    }
+                    
+                    this.loggingIn = true;
+                    this.loginError = '';
+                    
+                    try {
+                        const res = await fetch(`${this.apiUrl}/login`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({pin: this.loginPin})
+                        });
+                        const data = await res.json();
+                        
+                        if (data.success && data.user.role === 'admin') {
+                            this.user = data.user;
+                            this.user.pin = this.loginPin;
+                            this.connectWebSocket();
+                            await this.refresh();
+                        } else {
+                            this.loginError = data.user?.role !== 'admin' ? 'Admin access only' : 'Invalid PIN';
+                        }
+                    } catch (err) {
+                        this.loginError = 'Cannot connect to server';
+                    } finally {
+                        this.loggingIn = false;
+                    }
+                },
+                
+                logout() {
+                    if (confirm('Exit admin monitor?')) {
+                        this.user = null;
+                        this.loginPin = '';
+                        if (this.socket) this.socket.disconnect();
+                    }
+                },
+                
+                connectWebSocket() {
+                    this.socket = io(window.location.origin);
+                    
+                    this.socket.on('connect', () => {
+                        this.connectionStatus = 'connected';
+                    });
+                    
+                    this.socket.on('disconnect', () => {
+                        this.connectionStatus = 'disconnected';
+                    });
+                    
+                    this.socket.on('new_order', () => {
+                        this.loadStats();
+                        this.loadOrders();
+                    });
+                    
+                    this.socket.on('order_updated', () => {
+                        this.loadStats();
+                        this.loadOrders();
+                    });
+                },
+                
+                async refresh() {
+                    this.refreshing = true;
+                    await Promise.all([
+                        this.loadStats(),
+                        this.loadOrders(),
+                        this.loadMenuCount()
+                    ]);
+                    this.refreshing = false;
+                    this.showToast('Data refreshed', 'success');
+                },
+                
+                async loadStats() {
+                    try {
+                        const res = await fetch(`${this.apiUrl}/dashboard/stats?role=admin`);
+                        this.stats = await res.json();
+                    } catch (err) {
+                        console.error('Failed to load stats:', err);
+                    }
+                },
+                
+                async loadOrders() {
+                    try {
+                        const res = await fetch(`${this.apiUrl}/orders?limit=100&role=admin`);
+                        this.orders = await res.json();
+                    } catch (err) {
+                        console.error('Failed to load orders:', err);
+                    }
+                },
+                
+                async loadMenuCount() {
+                    try {
+                        const res = await fetch(`${this.apiUrl}/menu`);
+                        const menu = await res.json();
+                        this.menuItemCount = menu.length;
+                    } catch (err) {
+                        console.error('Failed to load menu:', err);
+                    }
+                },
+                
+                viewOrderDetails(order) {
+                    this.selectedOrder = order;
+                },
+                
+                confirmDeleteOrder(order) {
+                    this.deleteConfirm = order;
+                },
+                
+                async deleteOrder() {
+                    if (!this.deletePIN) {
+                        this.showToast('Enter PIN', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        const res = await fetch(`${this.apiUrl}/admin/orders/${this.deleteConfirm.id}`, {
+                            method: 'DELETE',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                admin_pin: this.deletePIN,
+                                permanent: this.deleteType === 'permanent'
+                            })
+                        });
+                        
+                        if (res.ok) {
+                            this.showToast('Order deleted', 'success');
+                            this.deleteConfirm = null;
+                            this.deletePIN = '';
+                            this.loadOrders();
+                        } else {
+                            this.showToast('Delete failed - check PIN', 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('Network error', 'error');
+                    }
+                },
+                
+                async generateVATReport() {
+                    if (!this.vatReportFrom || !this.vatReportTo) {
+                        this.showToast('Select date range', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        const res = await fetch(`${this.apiUrl}/admin/vat-report?admin_pin=${this.user.pin}&from_date=${this.vatReportFrom}&to_date=${this.vatReportTo}`);
+                        if (res.ok) {
+                            this.vatReport = await res.json();
+                            this.showToast('Report generated', 'success');
+                        } else {
+                            this.showToast('Failed to generate', 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('Network error', 'error');
+                    }
+                },
+                
+                exportVATReport() {
+                    if (!this.vatReport) return;
+                    
+                    let csv = 'Order,Date,Total,VAT Rate,VAT Amount,Net Amount\n';
+                    this.vatReport.orders.forEach(o => {
+                        csv += `${o.order_number},${o.date},${o.total},${o.vat_rate}%,${o.vat},${o.net}\n`;
+                    });
+                    
+                    const blob = new Blob([csv], {type: 'text/csv'});
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `VAT-Report-${this.vatReportFrom}-to-${this.vatReportTo}.csv`;
+                    a.click();
+                    this.showToast('Report exported', 'success');
+                },
+                
+                async loadVATPeriods() {
+                    try {
+                        const res = await fetch(`${this.apiUrl}/admin/vat-periods?admin_pin=${this.user.pin}`);
+                        if (res.ok) {
+                            this.vatPeriods = await res.json();
+                            this.showToast('VAT periods loaded', 'success');
+                        }
+                    } catch (err) {
+                        this.showToast('Failed to load', 'error');
+                    }
+                },
+                
+                async addVATPeriod() {
+                    if (!this.newVATPeriod.start_date || !this.newVATPeriod.vat_rate) {
+                        this.showToast('Fill required fields', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        const res = await fetch(`${this.apiUrl}/admin/vat-periods`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                ...this.newVATPeriod,
+                                admin_pin: this.user.pin
+                            })
+                        });
+                        
+                        if (res.ok) {
+                            this.showToast('Period added', 'success');
+                            this.newVATPeriod = {start_date: '', end_date: '', vat_rate: '', description: ''};
+                            this.loadVATPeriods();
+                        }
+                    } catch (err) {
+                        this.showToast('Failed to add', 'error');
+                    }
+                },
+                
+                openKDS() {
+                    window.open('/kds.html', '_blank');
+                },
+                
+                openPOS() {
+                    window.open('/', '_blank');
+                },
+                
+                showToast(message, type = 'success') {
+                    this.toast = {message, type};
+                    setTimeout(() => this.toast = null, 3000);
+                },
+                
+                formatTime(timestamp) {
+                    return new Date(timestamp).toLocaleTimeString();
+                },
+                
+                formatDate(date) {
+                    return new Date(date).toLocaleDateString();
+                },
+                
+                formatDateTime(timestamp) {
+                    const d = new Date(timestamp);
+                    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+                },
+                
+                getStatusBadge(status) {
+                    const badges = {
+                        'pending': 'bg-yellow-600 text-yellow-100',
+                        'cooking': 'bg-blue-600 text-blue-100',
+                        'ready': 'bg-green-600 text-green-100',
+                        'completed': 'bg-gray-600 text-gray-100'
+                    };
+                    return badges[status] || 'bg-gray-600';
+                },
+                
+                updateTime() {
+                    const now = new Date();
+                    this.currentTime = now.toLocaleTimeString();
+                    this.currentDate = now.toLocaleDateString();
+                }
+            },
+            
+            mounted() {
+                this.updateTime();
+                setInterval(this.updateTime, 1000);
+                
+                fetch(`${this.apiUrl}/health`)
+                    .then(() => this.connectionStatus = 'connected')
+                    .catch(() => this.connectionStatus = 'disconnected');
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
