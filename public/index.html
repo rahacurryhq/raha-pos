@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAHA POS - Counter System</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-50">
+    <div id="app">
+        <!-- Login Screen -->
+        <div v-if="!user" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-500 to-red-600">
+            <div class="bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full">
+                <div class="text-center mb-8">
+                    <h1 class="text-4xl font-bold text-orange-600 mb-2">🍛 THE RAHA</h1>
+                    <p class="text-gray-600">Point of Sale System</p>
+                    <div v-if="connectionStatus === 'connected'" class="mt-2 flex items-center justify-center space-x-2">
+                        <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span class="text-xs text-green-600">Server Online</span>
+                    </div>
+                    <div v-else class="mt-2 flex items-center justify-center space-x-2">
+                        <div class="w-2 h-2 bg-red-500 rounded-full"></div>
+                        <span class="text-xs text-red-600">Server Offline</span>
+                    </div>
+                </div>
+                <div class="mb-6">
+                    <label class="block text-gray-700 font-semibold mb-2">Enter PIN:</label>
+                    <input 
+                        v-model="loginPin" 
+                        type="password" 
+                        maxlength="4"
+                        @keyup.enter="login"
+                        class="w-full px-4 py-3 text-2xl text-center border-2 rounded-lg focus:border-orange-500 focus:outline-none"
+                        placeholder="••••"
+                        autofocus>
+                </div>
+                <button @click="login" :disabled="loggingIn" class="w-full bg-orange-600 text-white py-3 rounded-lg font-bold text-lg hover:bg-orange-700 transition disabled:bg-gray-400">
+                    <span v-if="loggingIn"><i class="fas fa-spinner fa-spin mr-2"></i>Logging in...</span>
+                    <span v-else><i class="fas fa-sign-in-alt mr-2"></i>Login</span>
+                </button>
+                <div v-if="loginError" class="mt-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">
+                    {{ loginError }}
+                </div>
+                <div class="mt-6 text-center text-sm text-gray-500">
+                    <p>Staff PINs:</p>
+                    <p>Admin: 9999 | Manager: 2222 | Front: 3333</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Application -->
+        <div v-else class="min-h-screen">
+            <!-- Top Navigation -->
+            <nav class="bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-lg">
+                <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+                    <div class="flex items-center space-x-4">
+                        <h1 class="text-2xl font-bold">🍛 THE RAHA POS</h1>
+                        <span class="text-sm opacity-75">{{ user.name }} ({{ user.role }})</span>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="text-right text-sm">
+                            <div>{{ currentDate }}</div>
+                            <div class="text-xs opacity-75">{{ currentTime }}</div>
+                        </div>
+                        <div v-if="connectionStatus === 'connected'" class="flex items-center space-x-2">
+                            <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                            <span class="text-xs">Live</span>
+                        </div>
+                        <div v-else class="flex items-center space-x-2 bg-red-700 px-3 py-1 rounded">
+                            <div class="w-2 h-2 bg-red-300 rounded-full"></div>
+                            <span class="text-xs">Offline</span>
+                        </div>
+                        <button @click="confirmLogout" class="bg-white text-orange-600 px-4 py-2 rounded-lg font-semibold hover:bg-orange-50 transition">
+                            <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                        </button>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Dashboard Stats -->
+            <div class="container mx-auto px-4 py-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm">Today's Orders</p>
+                                <p class="text-3xl font-bold text-orange-600">{{ stats.today_orders }}</p>
+                            </div>
+                            <i class="fas fa-shopping-cart text-4xl text-orange-200"></i>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm">Today's Revenue</p>
+                                <p class="text-3xl font-bold text-green-600">€{{ stats.today_revenue.toFixed(2) }}</p>
+                                <p v-if="user.role === 'admin'" class="text-xs text-gray-500">VAT: €{{ stats.today_vat?.toFixed(2) || '0.00' }}</p>
+                            </div>
+                            <i class="fas fa-euro-sign text-4xl text-green-200"></i>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm">Pending</p>
+                                <p class="text-3xl font-bold text-yellow-600">{{ stats.pending_orders }}</p>
+                            </div>
+                            <i class="fas fa-clock text-4xl text-yellow-200"></i>
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-500 text-sm">Cooking</p>
+                                <p class="text-3xl font-bold text-blue-600">{{ stats.cooking_orders }}</p>
+                            </div>
+                            <i class="fas fa-fire text-4xl text-blue-200"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h2 class="text-xl font-bold mb-4">Quick Actions</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <button @click="view = 'pos'" class="bg-gradient-to-br from-orange-500 to-red-500 text-white p-6 rounded-lg hover:shadow-lg transition">
+                            <i class="fas fa-cash-register text-3xl mb-2"></i>
+                            <p class="font-bold">New Order</p>
+                        </button>
+                        <button @click="view = 'orders'" class="bg-gradient-to-br from-blue-500 to-indigo-500 text-white p-6 rounded-lg hover:shadow-lg transition">
+                            <i class="fas fa-list text-3xl mb-2"></i>
+                            <p class="font-bold">View Orders</p>
+                        </button>
+                        <button v-if="user.role === 'admin'" @click="view = 'vat'" class="bg-gradient-to-br from-purple-500 to-pink-500 text-white p-6 rounded-lg hover:shadow-lg transition">
+                            <i class="fas fa-percent text-3xl mb-2"></i>
+                            <p class="font-bold">VAT Reports</p>
+                        </button>
+                        <button @click="view = 'dashboard'" class="bg-gradient-to-br from-gray-500 to-gray-600 text-white p-6 rounded-lg hover:shadow-lg transition">
+                            <i class="fas fa-home text-3xl mb-2"></i>
+                            <p class="font-bold">Dashboard</p>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- POS View -->
+                <div v-if="view === 'pos'" class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-bold">New Order</h2>
+                        <button @click="view = 'dashboard'" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                            <i class="fas fa-arrow-left mr-2"></i>Back
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Menu -->
+                        <div class="lg:col-span-2">
+                            <div class="mb-4 flex gap-2">
+                                <input v-model="menuSearch" type="text" placeholder="Search menu..." 
+                                    class="flex-1 px-4 py-2 border rounded-lg">
+                                <select v-model="selectedCategory" class="px-4 py-2 border rounded-lg">
+                                    <option value="">All Categories</option>
+                                    <option v-for="cat in categories" :key="cat">{{ cat }}</option>
+                                </select>
+                            </div>
+                            <div v-if="loading" class="text-center py-8">
+                                <i class="fas fa-spinner fa-spin text-4xl text-orange-500"></i>
+                                <p class="mt-2 text-gray-500">Loading menu...</p>
+                            </div>
+                            <div v-else class="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[600px] overflow-y-auto">
+                                <div v-for="item in filteredMenu" :key="item.id"
+                                    @click="addToCart(item)"
+                                    class="bg-gradient-to-br from-orange-50 to-red-50 p-4 rounded-lg cursor-pointer hover:shadow-md transition border-2 border-transparent hover:border-orange-500">
+                                    <p class="font-bold text-gray-800">{{ item.name }}</p>
+                                    <p class="text-orange-600 font-bold text-lg">€{{ item.price.toFixed(2) }}</p>
+                                    <p v-if="item.allergens && item.allergens !== 'None'" class="text-xs text-red-600 mt-1">
+                                        <i class="fas fa-exclamation-triangle"></i> {{ item.allergens }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Cart -->
+                        <div class="bg-gray-50 p-4 rounded-lg">
+                            <h3 class="font-bold text-lg mb-4">Current Order</h3>
+                            <div v-if="cart.length === 0" class="text-center text-gray-400 py-8">
+                                <i class="fas fa-shopping-cart text-4xl mb-2"></i>
+                                <p>Cart is empty</p>
+                            </div>
+                            <div v-else class="space-y-2 mb-4 max-h-[300px] overflow-y-auto">
+                                <div v-for="(item, idx) in cart" :key="idx" 
+                                    class="flex justify-between items-center bg-white p-3 rounded-lg">
+                                    <div class="flex-1">
+                                        <p class="font-semibold">{{ item.name }}</p>
+                                        <p class="text-sm text-gray-500">€{{ item.price.toFixed(2) }} x {{ item.qty }}</p>
+                                    </div>
+                                    <div class="flex items-center space-x-2">
+                                        <button @click="decreaseQty(idx)" class="w-8 h-8 bg-gray-200 rounded hover:bg-gray-300">
+                                            <i class="fas fa-minus text-xs"></i>
+                                        </button>
+                                        <span class="w-8 text-center font-bold">{{ item.qty }}</span>
+                                        <button @click="increaseQty(idx)" class="w-8 h-8 bg-gray-200 rounded hover:bg-gray-300">
+                                            <i class="fas fa-plus text-xs"></i>
+                                        </button>
+                                        <button @click="confirmRemove(idx)" class="text-red-500 hover:text-red-700 ml-2">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="border-t pt-4 space-y-2">
+                                <div class="flex justify-between">
+                                    <span>Subtotal:</span>
+                                    <span class="font-bold">€{{ cartSubtotal.toFixed(2) }}</span>
+                                </div>
+                                <div v-if="orderMode === 'delivery'" class="flex justify-between">
+                                    <span>Delivery:</span>
+                                    <span>€3.50</span>
+                                </div>
+                                <div class="flex justify-between text-xl font-bold text-orange-600 pt-2 border-t">
+                                    <span>Total:</span>
+                                    <span>€{{ cartTotal.toFixed(2) }}</span>
+                                </div>
+                            </div>
+                            <div class="mt-4 space-y-2">
+                                <select v-model="orderMode" class="w-full px-4 py-2 border rounded-lg">
+                                    <option value="collection">Collection</option>
+                                    <option value="delivery">Delivery</option>
+                                </select>
+                                <select v-model="paymentType" class="w-full px-4 py-2 border rounded-lg">
+                                    <option value="cash">Cash</option>
+                                    <option value="card">Card</option>
+                                    <option value="online">Online Payment</option>
+                                </select>
+                                <input v-model="customerName" type="text" placeholder="Customer name" 
+                                    class="w-full px-4 py-2 border rounded-lg">
+                                <input v-model="customerPhone" type="text" placeholder="Customer phone" 
+                                    class="w-full px-4 py-2 border rounded-lg">
+                                <textarea v-model="specialInstructions" placeholder="Special instructions (optional)" 
+                                    class="w-full px-4 py-2 border rounded-lg" rows="2"></textarea>
+                                <button @click="completeOrder" 
+                                    :disabled="cart.length === 0 || submittingOrder"
+                                    class="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition disabled:bg-gray-300">
+                                    <span v-if="submittingOrder"><i class="fas fa-spinner fa-spin mr-2"></i>Processing...</span>
+                                    <span v-else><i class="fas fa-check mr-2"></i>Complete Order</span>
+                                </button>
+                                <button @click="confirmClearCart" :disabled="cart.length === 0" class="w-full bg-gray-400 text-white py-2 rounded-lg hover:bg-gray-500 transition disabled:bg-gray-200">
+                                    Clear Cart
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Orders View -->
+                <div v-if="view === 'orders'" class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-bold">All Orders</h2>
+                        <button @click="view = 'dashboard'" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                            <i class="fas fa-arrow-left mr-2"></i>Back
+                        </button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-2 text-left">Order #</th>
+                                    <th class="px-4 py-2 text-left">Time</th>
+                                    <th class="px-4 py-2 text-left">Customer</th>
+                                    <th class="px-4 py-2 text-left">Total</th>
+                                    <th class="px-4 py-2 text-left">Status</th>
+                                    <th class="px-4 py-2 text-left">Payment</th>
+                                    <th v-if="user.role === 'admin'" class="px-4 py-2 text-left">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="order in recentOrders" :key="order.id" class="border-b hover:bg-gray-50">
+                                    <td class="px-4 py-3 font-bold">#{{ order.order_number }}</td>
+                                    <td class="px-4 py-3 text-sm">{{ formatTime(order.timestamp) }}</td>
+                                    <td class="px-4 py-3">{{ order.customer_name }}</td>
+                                    <td class="px-4 py-3 font-bold">€{{ order.total.toFixed(2) }}</td>
+                                    <td class="px-4 py-3">
+                                        <span :class="getStatusClass(order.status)" class="px-2 py-1 rounded text-xs font-bold">
+                                            {{ order.status.toUpperCase() }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm">{{ order.payment_type }}</td>
+                                    <td v-if="user.role === 'admin'" class="px-4 py-3">
+                                        <button @click="confirmDelete(order)" class="text-red-600 hover:text-red-800">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- VAT Reports (Admin Only) -->
+                <div v-if="view === 'vat' && user.role === 'admin'" class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-2xl font-bold">VAT Reports & Management</h2>
+                        <button @click="view = 'dashboard'" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                            <i class="fas fa-arrow-left mr-2"></i>Back
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- VAT Report -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold text-lg mb-4">Generate VAT Report</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-sm font-semibold mb-1">From Date:</label>
+                                    <input v-model="vatReportFrom" type="date" class="w-full px-3 py-2 border rounded">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-semibold mb-1">To Date:</label>
+                                    <input v-model="vatReportTo" type="date" class="w-full px-3 py-2 border rounded">
+                                </div>
+                                <button @click="generateVATReport" class="w-full bg-purple-600 text-white py-2 rounded hover:bg-purple-700">
+                                    <i class="fas fa-file-alt mr-2"></i>Generate Report
+                                </button>
+                            </div>
+                            <div v-if="vatReport" class="mt-4 p-4 bg-purple-50 rounded">
+                                <h4 class="font-bold mb-2">Report Summary</h4>
+                                <div class="space-y-1 text-sm">
+                                    <p><strong>Orders:</strong> {{ vatReport.total_orders }}</p>
+                                    <p><strong>Revenue:</strong> €{{ vatReport.total_revenue.toFixed(2) }}</p>
+                                    <p><strong>VAT:</strong> €{{ vatReport.total_vat.toFixed(2) }}</p>
+                                    <p><strong>Net:</strong> €{{ vatReport.total_net.toFixed(2) }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- VAT Period Management -->
+                        <div class="border rounded-lg p-4">
+                            <h3 class="font-bold text-lg mb-4">VAT Periods</h3>
+                            <button @click="loadVATPeriods" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 mb-3">
+                                <i class="fas fa-sync mr-2"></i>Load VAT Periods
+                            </button>
+                            <div v-if="vatPeriods.length > 0" class="space-y-2 mb-4">
+                                <div v-for="period in vatPeriods" :key="period.id" class="p-3 bg-blue-50 rounded">
+                                    <p class="font-semibold">{{ period.vat_rate }}% VAT</p>
+                                    <p class="text-xs text-gray-600">{{ period.start_date }} to {{ period.end_date || 'Present' }}</p>
+                                    <p class="text-xs">{{ period.description }}</p>
+                                </div>
+                            </div>
+                            <div class="border-t pt-3">
+                                <h4 class="font-semibold mb-2">Add New Period</h4>
+                                <div class="space-y-2">
+                                    <input v-model="newVATPeriod.start_date" type="date" placeholder="Start date" class="w-full px-3 py-2 border rounded text-sm">
+                                    <input v-model="newVATPeriod.end_date" type="date" placeholder="End date (optional)" class="w-full px-3 py-2 border rounded text-sm">
+                                    <input v-model="newVATPeriod.vat_rate" type="number" step="0.1" placeholder="VAT rate %" class="w-full px-3 py-2 border rounded text-sm">
+                                    <input v-model="newVATPeriod.description" type="text" placeholder="Description" class="w-full px-3 py-2 border rounded text-sm">
+                                    <button @click="addVATPeriod" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 text-sm">
+                                        <i class="fas fa-plus mr-2"></i>Add Period
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Toast Notifications -->
+                <div v-if="toast" class="fixed bottom-4 right-4 z-50 animate-fade-in">
+                    <div :class="['px-6 py-4 rounded-lg shadow-lg text-white', toast.type === 'success' ? 'bg-green-500' : 'bg-red-500']">
+                        <i :class="['fas mr-2', toast.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle']"></i>
+                        {{ toast.message }}
+                    </div>
+                </div>
+
+                <!-- Confirmation Dialog -->
+                <div v-if="confirmDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                        <h3 class="text-xl font-bold mb-4">{{ confirmDialog.title }}</h3>
+                        <p class="mb-6">{{ confirmDialog.message }}</p>
+                        <div v-if="confirmDialog.requirePIN" class="mb-4">
+                            <label class="block font-semibold mb-2">Enter Admin PIN:</label>
+                            <input v-model="confirmPIN" type="password" maxlength="4" class="w-full px-4 py-2 border rounded" autofocus>
+                        </div>
+                        <div class="flex gap-3">
+                            <button @click="cancelConfirm" class="flex-1 bg-gray-400 text-white py-2 rounded hover:bg-gray-500">
+                                Cancel
+                            </button>
+                            <button @click="proceedConfirm" class="flex-1 bg-red-600 text-white py-2 rounded hover:bg-red-700">
+                                Confirm
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    apiUrl: window.location.origin + '/api',
+                    socket: null,
+                    connectionStatus: 'disconnected',
+                    
+                    user: null,
+                    loginPin: '',
+                    loginError: '',
+                    loggingIn: false,
+                    
+                    view: 'dashboard',
+                    currentTime: '',
+                    currentDate: '',
+                    toast: null,
+                    
+                    stats: {
+                        today_orders: 0,
+                        today_revenue: 0,
+                        today_vat: 0,
+                        pending_orders: 0,
+                        cooking_orders: 0,
+                        ready_orders: 0
+                    },
+                    
+                    cart: [],
+                    orderMode: 'collection',
+                    paymentType: 'cash',
+                    customerName: 'Guest',
+                    customerPhone: '',
+                    specialInstructions: '',
+                    menuSearch: '',
+                    selectedCategory: '',
+                    loading: false,
+                    submittingOrder: false,
+                    
+                    menu: [],
+                    recentOrders: [],
+                    
+                    confirmDialog: null,
+                    confirmPIN: '',
+                    
+                    vatReportFrom: '',
+                    vatReportTo: '',
+                    vatReport: null,
+                    vatPeriods: [],
+                    newVATPeriod: {
+                        start_date: '',
+                        end_date: '',
+                        vat_rate: '',
+                        description: ''
+                    }
+                };
+            },
+            
+            computed: {
+                categories() {
+                    return [...new Set(this.menu.map(item => item.category))];
+                },
+                filteredMenu() {
+                    let items = this.menu;
+                    if (this.selectedCategory) {
+                        items = items.filter(i => i.category === this.selectedCategory);
+                    }
+                    if (this.menuSearch) {
+                        items = items.filter(i => i.name.toLowerCase().includes(this.menuSearch.toLowerCase()));
+                    }
+                    return items;
+                },
+                cartSubtotal() {
+                    return this.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+                },
+                cartTotal() {
+                    return this.cartSubtotal + (this.orderMode === 'delivery' ? 3.5 : 0);
+                }
+            },
+            
+            methods: {
+                async login() {
+                    if (!this.loginPin || this.loginPin.length !== 4) {
+                        this.loginError = 'Please enter 4-digit PIN';
+                        return;
+                    }
+                    
+                    this.loggingIn = true;
+                    this.loginError = '';
+                    
+                    try {
+                        const res = await fetch(`${this.apiUrl}/login`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({pin: this.loginPin})
+                        });
+                        const data = await res.json();
+                        
+                        if (data.success) {
+                            this.user = data.user;
+                            this.user.pin = this.loginPin;
+                            this.loginError = '';
+                            this.connectWebSocket();
+                            await this.loadMenu();
+                            await this.loadStats();
+                            await this.loadOrders();
+                        } else {
+                            this.loginError = data.message || 'Invalid PIN';
+                        }
+                    } catch (err) {
+                        this.loginError = 'Cannot connect to server';
+                        console.error(err);
+                    } finally {
+                        this.loggingIn = false;
+                    }
+                },
+                
+                confirmLogout() {
+                    if (confirm('Logout? Any unsaved work will be lost.')) {
+                        this.user = null;
+                        this.loginPin = '';
+                        if (this.socket) this.socket.disconnect();
+                    }
+                },
+                
+                connectWebSocket() {
+                    this.socket = io(window.location.origin);
+                    
+                    this.socket.on('connect', () => {
+                        this.connectionStatus = 'connected';
+                    });
+                    
+                    this.socket.on('disconnect', () => {
+                        this.connectionStatus = 'disconnected';
+                    });
+                    
+                    this.socket.on('new_order', (order) => {
+                        this.recentOrders.unshift(order);
+                        this.loadStats();
+                    });
+                    
+                    this.socket.on('order_updated', (order) => {
+                        const idx = this.recentOrders.findIndex(o => o.id === order.id);
+                        if (idx !== -1) {
+                            this.recentOrders[idx] = order;
+                        }
+                        this.loadStats();
+                    });
+                },
+                
+                async loadMenu() {
+                    this.loading = true;
+                    try {
+                        const res = await fetch(`${this.apiUrl}/menu`);
+                        this.menu = await res.json();
+                    } catch (err) {
+                        this.showToast('Failed to load menu', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                
+                async loadStats() {
+                    try {
+                        const res = await fetch(`${this.apiUrl}/dashboard/stats?role=${this.user.role}`);
+                        this.stats = await res.json();
+                    } catch (err) {
+                        console.error('Failed to load stats:', err);
+                    }
+                },
+                
+                async loadOrders() {
+                    try {
+                        const res = await fetch(`${this.apiUrl}/orders?limit=50&role=${this.user.role}`);
+                        this.recentOrders = await res.json();
+                    } catch (err) {
+                        console.error('Failed to load orders:', err);
+                    }
+                },
+                
+                addToCart(item) {
+                    const existing = this.cart.find(i => i.id === item.id);
+                    if (existing) {
+                        existing.qty++;
+                    } else {
+                        this.cart.push({...item, qty: 1});
+                    }
+                },
+                
+                increaseQty(idx) {
+                    this.cart[idx].qty++;
+                },
+                
+                decreaseQty(idx) {
+                    if (this.cart[idx].qty > 1) {
+                        this.cart[idx].qty--;
+                    } else {
+                        this.confirmRemove(idx);
+                    }
+                },
+                
+                confirmRemove(idx) {
+                    this.confirmDialog = {
+                        title: 'Remove Item?',
+                        message: `Remove ${this.cart[idx].name} from cart?`,
+                        action: () => this.cart.splice(idx, 1)
+                    };
+                },
+                
+                confirmClearCart() {
+                    if (this.cart.length === 0) return;
+                    this.confirmDialog = {
+                        title: 'Clear Cart?',
+                        message: 'Remove all items from cart? This cannot be undone.',
+                        action: () => {
+                            this.cart = [];
+                            this.customerName = 'Guest';
+                            this.customerPhone = '';
+                            this.specialInstructions = '';
+                        }
+                    };
+                },
+                
+                async completeOrder() {
+                    if (this.cart.length === 0) return;
+                    
+                    this.submittingOrder = true;
+                    
+                    const order = {
+                        items: this.cart,
+                        subtotal: this.cartSubtotal,
+                        delivery_charge: this.orderMode === 'delivery' ? 3.5 : 0,
+                        total: this.cartTotal,
+                        payment_type: this.paymentType,
+                        mode: this.orderMode,
+                        customer_name: this.customerName || 'Guest',
+                        customer_phone: this.customerPhone,
+                        special_instructions: this.specialInstructions,
+                        created_by: this.user.pin
+                    };
+                    
+                    try {
+                        const res = await fetch(`${this.apiUrl}/orders`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(order)
+                        });
+                        const data = await res.json();
+                        
+                        if (data.success) {
+                            this.showToast(`Order #${data.order.order_number} created!`, 'success');
+                            this.cart = [];
+                            this.customerName = 'Guest';
+                            this.customerPhone = '';
+                            this.specialInstructions = '';
+                            this.view = 'orders';
+                        } else {
+                            this.showToast('Failed to create order', 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('Network error', 'error');
+                    } finally {
+                        this.submittingOrder = false;
+                    }
+                },
+                
+                confirmDelete(order) {
+                    this.confirmDialog = {
+                        title: 'Delete Order?',
+                        message: `Delete Order #${order.order_number}? This will hide it from the system.`,
+                        requirePIN: true,
+                        action: () => this.deleteOrder(order.id)
+                    };
+                },
+                
+                async deleteOrder(orderId) {
+                    try {
+                        const res = await fetch(`${this.apiUrl}/admin/orders/${orderId}`, {
+                            method: 'DELETE',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                admin_pin: this.confirmPIN,
+                                permanent: false
+                            })
+                        });
+                        
+                        if (res.ok) {
+                            this.showToast('Order deleted', 'success');
+                            this.loadOrders();
+                        } else {
+                            this.showToast('Delete failed - check PIN', 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('Network error', 'error');
+                    }
+                },
+                
+                async generateVATReport() {
+                    if (!this.vatReportFrom || !this.vatReportTo) {
+                        this.showToast('Select date range', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        const res = await fetch(`${this.apiUrl}/admin/vat-report?admin_pin=${this.user.pin}&from_date=${this.vatReportFrom}&to_date=${this.vatReportTo}`);
+                        if (res.ok) {
+                            this.vatReport = await res.json();
+                            this.showToast('Report generated', 'success');
+                        } else {
+                            this.showToast('Failed to generate report', 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('Network error', 'error');
+                    }
+                },
+                
+                async loadVATPeriods() {
+                    try {
+                        const res = await fetch(`${this.apiUrl}/admin/vat-periods?admin_pin=${this.user.pin}`);
+                        if (res.ok) {
+                            this.vatPeriods = await res.json();
+                            this.showToast('VAT periods loaded', 'success');
+                        }
+                    } catch (err) {
+                        this.showToast('Failed to load periods', 'error');
+                    }
+                },
+                
+                async addVATPeriod() {
+                    if (!this.newVATPeriod.start_date || !this.newVATPeriod.vat_rate) {
+                        this.showToast('Fill required fields', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        const res = await fetch(`${this.apiUrl}/admin/vat-periods`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                ...this.newVATPeriod,
+                                admin_pin: this.user.pin
+                            })
+                        });
+                        
+                        if (res.ok) {
+                            this.showToast('VAT period added', 'success');
+                            this.newVATPeriod = {start_date: '', end_date: '', vat_rate: '', description: ''};
+                            this.loadVATPeriods();
+                        }
+                    } catch (err) {
+                        this.showToast('Failed to add period', 'error');
+                    }
+                },
+                
+                cancelConfirm() {
+                    this.confirmDialog = null;
+                    this.confirmPIN = '';
+                },
+                
+                proceedConfirm() {
+                    if (this.confirmDialog.action) {
+                        this.confirmDialog.action();
+                    }
+                    this.confirmDialog = null;
+                    this.confirmPIN = '';
+                },
+                
+                showToast(message, type = 'success') {
+                    this.toast = {message, type};
+                    setTimeout(() => this.toast = null, 3000);
+                },
+                
+                formatTime(timestamp) {
+                    return new Date(timestamp).toLocaleTimeString();
+                },
+                
+                getStatusClass(status) {
+                    const classes = {
+                        'pending': 'bg-yellow-100 text-yellow-800',
+                        'cooking': 'bg-blue-100 text-blue-800',
+                        'ready': 'bg-green-100 text-green-800',
+                        'completed': 'bg-gray-100 text-gray-800'
+                    };
+                    return classes[status] || 'bg-gray-100 text-gray-800';
+                },
+                
+                updateTime() {
+                    const now = new Date();
+                    this.currentTime = now.toLocaleTimeString();
+                    this.currentDate = now.toLocaleDateString();
+                }
+            },
+            
+            mounted() {
+                this.updateTime();
+                setInterval(this.updateTime, 1000);
+                
+                // Try to connect
+                fetch(`${this.apiUrl}/health`)
+                    .then(() => this.connectionStatus = 'connected')
+                    .catch(() => this.connectionStatus = 'disconnected');
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
