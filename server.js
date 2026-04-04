@@ -65,7 +65,7 @@ function getVATRateForDate(date) {
         ORDER BY start_date DESC LIMIT 1
     `).get(date, date);
     
-    return rates ? rates.vat_rate : 13.5; // Default Irish rate
+    return rates ? rates.vat_rate : 13.5;
 }
 
 function calculateVAT(total, vatRate) {
@@ -80,7 +80,6 @@ function calculateVAT(total, vatRate) {
 function initDatabase() {
     try {
         db.exec(`
-            -- Orders with full tracking
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 order_number INTEGER NOT NULL UNIQUE,
@@ -114,7 +113,6 @@ function initDatabase() {
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
-            -- VAT Periods Table
             CREATE TABLE IF NOT EXISTS vat_periods (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 start_date TEXT NOT NULL,
@@ -125,7 +123,6 @@ function initDatabase() {
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
-            -- Menu with allergens
             CREATE TABLE IF NOT EXISTS menu_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
@@ -142,7 +139,6 @@ function initDatabase() {
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
-            -- Customers
             CREATE TABLE IF NOT EXISTS customers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -161,7 +157,6 @@ function initDatabase() {
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
-            -- Users with roles
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -173,7 +168,6 @@ function initDatabase() {
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
-            -- Activity logs
             CREATE TABLE IF NOT EXISTS staff_activity (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
@@ -185,27 +179,23 @@ function initDatabase() {
                 ip_address TEXT
             );
 
-            -- Settings
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
-            -- Order sequence (never resets)
             CREATE TABLE IF NOT EXISTS order_sequence (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 current_number INTEGER NOT NULL DEFAULT 0
             );
 
-            -- Indexes
             CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
             CREATE INDEX IF NOT EXISTS idx_orders_timestamp ON orders(timestamp);
             CREATE INDEX IF NOT EXISTS idx_orders_deleted ON orders(deleted);
             CREATE INDEX IF NOT EXISTS idx_menu_category ON menu_items(category);
             CREATE INDEX IF NOT EXISTS idx_vat_periods_dates ON vat_periods(start_date, end_date);
 
-            -- Triggers
             CREATE TRIGGER IF NOT EXISTS update_orders_timestamp 
             AFTER UPDATE ON orders
             BEGIN
@@ -219,10 +209,8 @@ function initDatabase() {
             END;
         `);
 
-        // Initialize sequences
         db.prepare('INSERT OR IGNORE INTO order_sequence (id, current_number) VALUES (1, 0)').run();
 
-        // Insert default VAT periods
         const vatCount = db.prepare('SELECT COUNT(*) as count FROM vat_periods').get();
         if (vatCount.count === 0) {
             db.prepare(`
@@ -234,7 +222,6 @@ function initDatabase() {
             console.log('✓ VAT periods created (13.5% until June 2026, then 9%)');
         }
 
-        // Settings
         const settings = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
         settings.run('restaurant_name', 'The RAHA');
         settings.run('show_vat_to_customer', 'false');
@@ -242,13 +229,11 @@ function initDatabase() {
         settings.run('currency', 'EUR');
         settings.run('order_number_prefix', 'R');
 
-        // Users
         const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
         if (userCount.count === 0) {
             insertDefaultUsers();
         }
 
-        // Menu
         const menuCount = db.prepare('SELECT COUNT(*) as count FROM menu_items WHERE deleted = 0').get();
         if (menuCount.count === 0) {
             insertFullMenu();
@@ -280,7 +265,7 @@ function insertDefaultUsers() {
 
 function insertFullMenu() {
     const menu = [
-        // Starters (10 items)
+        // Starters
         {name: 'Vegetable Samosa (2pc)', cat: 'Starters', price: 4.95, desc: 'Crispy pastry with spiced vegetables', allergens: 'Gluten'},
         {name: 'Chicken Samosa (2pc)', cat: 'Starters', price: 5.95, desc: 'Pastry filled with spiced chicken', allergens: 'Gluten'},
         {name: 'Onion Bhaji (4pc)', cat: 'Starters', price: 5.95, desc: 'Spiced onion fritters', allergens: 'Gluten'},
@@ -292,7 +277,7 @@ function insertFullMenu() {
         {name: 'Prawn Puri', cat: 'Starters', price: 8.95, desc: 'Spiced prawns on puri bread', allergens: 'Gluten,Shellfish'},
         {name: 'Tandoori Mushrooms', cat: 'Starters', price: 6.95, desc: 'Spiced mushrooms', allergens: 'Dairy'},
 
-        // Curries - Chicken (12 items)
+        // Curries - Chicken
         {name: 'Butter Chicken', cat: 'Curry-Chicken', price: 15.95, desc: 'Creamy tomato curry', allergens: 'Dairy,Nuts'},
         {name: 'Chicken Tikka Masala', cat: 'Curry-Chicken', price: 14.95, desc: 'Classic tikka masala', allergens: 'Dairy'},
         {name: 'Chicken Korma', cat: 'Curry-Chicken', price: 14.95, desc: 'Mild coconut curry', allergens: 'Dairy,Nuts'},
@@ -306,7 +291,7 @@ function insertFullMenu() {
         {name: 'Chicken Rogan Josh', cat: 'Curry-Chicken', price: 14.95, desc: 'Kashmiri curry', allergens: 'None'},
         {name: 'Chicken Pathia', cat: 'Curry-Chicken', price: 14.95, desc: 'Sweet & sour hot curry', allergens: 'None'},
 
-        // Curries - Lamb (8 items)
+        // Curries - Lamb
         {name: 'Lamb Rogan Josh', cat: 'Curry-Lamb', price: 16.95, desc: 'Kashmiri lamb curry', allergens: 'None'},
         {name: 'Lamb Korma', cat: 'Curry-Lamb', price: 16.95, desc: 'Mild coconut lamb curry', allergens: 'Dairy,Nuts'},
         {name: 'Lamb Madras', cat: 'Curry-Lamb', price: 16.95, desc: 'Hot lamb curry', allergens: 'None'},
@@ -316,7 +301,7 @@ function insertFullMenu() {
         {name: 'Lamb Jalfrezi', cat: 'Curry-Lamb', price: 16.95, desc: 'Lamb stir-fry', allergens: 'None'},
         {name: 'Lamb Balti', cat: 'Curry-Lamb', price: 16.95, desc: 'Medium lamb curry', allergens: 'None'},
 
-        // Rice (8 items)
+        // Rice
         {name: 'Pilau Rice', cat: 'Rice', price: 3.95, desc: 'Basmati rice', allergens: 'None'},
         {name: 'Boiled Rice', cat: 'Rice', price: 3.50, desc: 'Plain basmati', allergens: 'None'},
         {name: 'Egg Fried Rice', cat: 'Rice', price: 4.50, desc: 'Rice with egg', allergens: 'Eggs'},
@@ -326,7 +311,7 @@ function insertFullMenu() {
         {name: 'Vegetable Biryani', cat: 'Rice', price: 12.95, desc: 'Layered veg rice', allergens: 'Dairy'},
         {name: 'Special Fried Rice', cat: 'Rice', price: 5.95, desc: 'Egg, peas & veg', allergens: 'Eggs'},
 
-        // Breads (8 items)
+        // Breads
         {name: 'Plain Naan', cat: 'Bread', price: 2.95, desc: 'Traditional naan', allergens: 'Gluten,Dairy'},
         {name: 'Garlic Naan', cat: 'Bread', price: 3.50, desc: 'Garlic butter naan', allergens: 'Gluten,Dairy'},
         {name: 'Peshwari Naan', cat: 'Bread', price: 3.95, desc: 'Sweet coconut naan', allergens: 'Gluten,Dairy,Nuts'},
@@ -336,7 +321,7 @@ function insertFullMenu() {
         {name: 'Chapati', cat: 'Bread', price: 2.00, desc: 'Thin flatbread', allergens: 'Gluten'},
         {name: 'Paratha', cat: 'Bread', price: 3.50, desc: 'Layered flatbread', allergens: 'Gluten,Dairy'},
 
-        // Sides (10 items)
+        // Sides
         {name: 'Chips', cat: 'Sides', price: 3.50, desc: 'Fresh cut chips', allergens: 'None'},
         {name: 'Poppadoms (4pc)', cat: 'Sides', price: 2.50, desc: 'With chutney', allergens: 'Gluten'},
         {name: 'Raita', cat: 'Sides', price: 2.95, desc: 'Yogurt dip', allergens: 'Dairy'},
@@ -348,7 +333,7 @@ function insertFullMenu() {
         {name: 'Bombay Potatoes', cat: 'Sides', price: 4.50, desc: 'Spiced potatoes', allergens: 'None'},
         {name: 'Saag Aloo', cat: 'Sides', price: 4.95, desc: 'Spinach & potato', allergens: 'None'},
 
-        // Drinks (8 items)
+        // Drinks
         {name: 'Coke 330ml', cat: 'Drinks', price: 2.00, desc: 'Can', allergens: 'None'},
         {name: 'Diet Coke 330ml', cat: 'Drinks', price: 2.00, desc: 'Can', allergens: 'None'},
         {name: '7Up 330ml', cat: 'Drinks', price: 2.00, desc: 'Can', allergens: 'None'},
@@ -358,7 +343,7 @@ function insertFullMenu() {
         {name: 'Orange Juice 330ml', cat: 'Drinks', price: 2.50, desc: 'Fresh juice', allergens: 'None'},
         {name: 'Mango Lassi', cat: 'Drinks', price: 3.50, desc: 'Yogurt drink', allergens: 'Dairy'},
 
-        // Vegetarian (8 items)
+        // Vegetarian
         {name: 'Vegetable Korma', cat: 'Vegetarian', price: 12.95, desc: 'Mild veg curry', allergens: 'Dairy,Nuts'},
         {name: 'Vegetable Jalfrezi', cat: 'Vegetarian', price: 12.95, desc: 'Spicy veg stir-fry', allergens: 'None'},
         {name: 'Chana Masala', cat: 'Vegetarian', price: 11.95, desc: 'Chickpea curry', allergens: 'None'},
@@ -387,6 +372,7 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// ✅ FIX 1: login - fixed datetime('now') broken quote bug
 app.post('/api/login', (req, res) => {
     try {
         const { pin } = req.body;
@@ -418,7 +404,7 @@ app.post('/api/login', (req, res) => {
             loginTime: Date.now()
         });
 
-        // ✅ FIXED: outer double quotes so inner datetime('now') works correctly
+        // ✅ FIXED: double quotes outside so datetime('now') is valid SQL
         db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(user.id);
         db.prepare('INSERT INTO staff_activity (user_id, staff_name, action, ip_address) VALUES (?, ?, ?, ?)')
             .run(user.id, user.name, 'login', req.ip);
@@ -707,28 +693,40 @@ app.get('/api/admin/vat-report', (req, res) => {
     }
 });
 
+// ✅ FIX 2: Dashboard stats - null-safe, won't crash on empty DB
 app.get('/api/dashboard/stats', (req, res) => {
     try {
         const { role } = req.query;
         const today = new Date().toISOString().split('T')[0];
 
+        const safeGet = (stmt, ...params) => {
+            try {
+                const row = stmt.get(...params);
+                if (!row) return 0;
+                return row.c !== undefined ? row.c : (row.s !== undefined ? row.s : 0);
+            } catch(e) {
+                return 0;
+            }
+        };
+
         const stats = {
-            today_orders: db.prepare('SELECT COUNT(*) as c FROM orders WHERE DATE(timestamp) = ? AND deleted = 0').get(today).c,
-            today_revenue: db.prepare('SELECT COALESCE(SUM(total), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0').get(today).s,
-            total_customers: db.prepare('SELECT COUNT(*) as c FROM customers WHERE deleted = 0').get().c,
-            pending_orders: db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = ? AND deleted = 0').get('pending').c,
-            cooking_orders: db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = ? AND deleted = 0').get('cooking').c,
-            ready_orders: db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = ? AND deleted = 0').get('ready').c
+            today_orders:    safeGet(db.prepare('SELECT COUNT(*) as c FROM orders WHERE DATE(timestamp) = ? AND deleted = 0'), today),
+            today_revenue:   safeGet(db.prepare('SELECT COALESCE(SUM(total), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0'), today),
+            total_customers: safeGet(db.prepare('SELECT COUNT(*) as c FROM customers WHERE deleted = 0')),
+            pending_orders:  safeGet(db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = "pending" AND deleted = 0')),
+            cooking_orders:  safeGet(db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = "cooking" AND deleted = 0')),
+            ready_orders:    safeGet(db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = "ready" AND deleted = 0'))
         };
 
         if (role === 'admin') {
-            stats.today_vat = db.prepare('SELECT COALESCE(SUM(vat_amount), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0').get(today).s;
-            stats.today_net = db.prepare('SELECT COALESCE(SUM(net_amount), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0').get(today).s;
+            stats.today_vat = safeGet(db.prepare('SELECT COALESCE(SUM(vat_amount), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0'), today);
+            stats.today_net = safeGet(db.prepare('SELECT COALESCE(SUM(net_amount), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0'), today);
         }
 
         res.json(stats);
     } catch (err) {
-        res.status(500).json({ error: 'Failed' });
+        console.error('Stats error:', err);
+        res.status(500).json({ error: 'Failed to load stats' });
     }
 });
 
