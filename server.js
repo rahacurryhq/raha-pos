@@ -104,6 +104,14 @@ function autoSaveCustomer(order) {
 // ============= DATABASE INIT =============
 function initDatabase() {
     try {
+        // Run migrations FIRST before anything else
+        // This adds new columns to existing DB before indexes/triggers reference them
+        try { db.exec("ALTER TABLE orders ADD COLUMN table_number INTEGER DEFAULT NULL"); } catch(e) {}
+        try { db.exec("ALTER TABLE orders ADD COLUMN covers INTEGER DEFAULT 1"); } catch(e) {}
+        try { db.exec("ALTER TABLE orders ADD COLUMN course_status TEXT DEFAULT '{}'"); } catch(e) {}
+        try { db.exec("ALTER TABLE menu_items ADD COLUMN course TEXT NOT NULL DEFAULT 'mains'"); } catch(e) {}
+        try { db.exec("ALTER TABLE menu_items ADD COLUMN vat_rate REAL DEFAULT NULL"); } catch(e) {}
+
         db.exec(`
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -270,13 +278,6 @@ function initDatabase() {
 
         const menuCount = db.prepare('SELECT COUNT(*) as count FROM menu_items WHERE deleted = 0').get();
         if (menuCount.count === 0) insertFullMenu();
-
-        // Migrate: add new columns if upgrading from old DB
-        try { db.exec("ALTER TABLE menu_items ADD COLUMN course TEXT NOT NULL DEFAULT 'mains'"); } catch(e) {}
-        try { db.exec("ALTER TABLE menu_items ADD COLUMN vat_rate REAL DEFAULT NULL"); } catch(e) {}
-        try { db.exec("ALTER TABLE orders ADD COLUMN table_number INTEGER DEFAULT NULL"); } catch(e) {}
-        try { db.exec("ALTER TABLE orders ADD COLUMN covers INTEGER DEFAULT 1"); } catch(e) {}
-        try { db.exec("ALTER TABLE orders ADD COLUMN course_status TEXT DEFAULT '{}'"); } catch(e) {}
 
         console.log('✓ Database initialized');
         return true;
