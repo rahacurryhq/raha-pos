@@ -58,6 +58,15 @@
                         <span class="text-sm opacity-75">{{ user.name }} ({{ user.role }})</span>
                     </div>
                     <div class="flex items-center space-x-4">
+                        <a href="/kds.html" target="_blank" class="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-2 rounded-lg text-sm font-semibold transition">
+                            <i class="fas fa-utensils mr-1"></i>KDS
+                        </a>
+                        <a href="/monitor.html" target="_blank" v-if="user.role === 'admin' || user.role === 'manager'" class="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-2 rounded-lg text-sm font-semibold transition">
+                            <i class="fas fa-desktop mr-1"></i>Monitor
+                        </a>
+                        <a href="/pickup.html" target="_blank" class="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-2 rounded-lg text-sm font-semibold transition">
+                            <i class="fas fa-bell mr-1"></i>Pickup
+                        </a>
                         <div class="text-right text-sm">
                             <div>{{ currentDate }}</div>
                             <div class="text-xs opacity-75">{{ currentTime }}</div>
@@ -123,7 +132,7 @@
                 <div class="bg-white rounded-lg shadow p-6 mb-6">
                     <h2 class="text-xl font-bold mb-4">Quick Actions</h2>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <button @click="view = 'pos'" class="bg-gradient-to-br from-orange-500 to-red-500 text-white p-6 rounded-lg hover:shadow-lg transition">
+                        <button @click="view = 'pos'" v-if="user.role !== 'chef'" class="bg-gradient-to-br from-orange-500 to-red-500 text-white p-6 rounded-lg hover:shadow-lg transition">
                             <i class="fas fa-cash-register text-3xl mb-2"></i>
                             <p class="font-bold">New Order</p>
                         </button>
