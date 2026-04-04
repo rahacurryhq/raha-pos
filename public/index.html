@@ -9,7 +9,6 @@
     <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-<!-- Bell sounds generated via Web Audio API - no file needed -->
 <body class="bg-gray-50">
     <div id="app">
         <!-- Login Screen -->
@@ -140,6 +139,65 @@
                             <i class="fas fa-home text-3xl mb-2"></i>
                             <p class="font-bold">Dashboard</p>
                         </button>
+                    </div>
+                </div>
+
+                <!-- Dashboard Live Orders Panel -->
+                <div v-if="view === 'dashboard'" class="bg-white rounded-lg shadow p-6 mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold">Live Orders</h2>
+                        <button @click="loadOrders" class="text-sm text-orange-600 hover:text-orange-800">
+                            <i class="fas fa-sync mr-1"></i>Refresh
+                        </button>
+                    </div>
+                    <div v-if="recentOrders.length === 0" class="text-center py-10 text-gray-400">
+                        <i class="fas fa-receipt text-5xl mb-3"></i>
+                        <p>No orders yet today</p>
+                    </div>
+                    <div v-else class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="px-4 py-2 text-left">Order #</th>
+                                    <th class="px-4 py-2 text-left">Time</th>
+                                    <th class="px-4 py-2 text-left">Customer</th>
+                                    <th class="px-4 py-2 text-left">Mode</th>
+                                    <th class="px-4 py-2 text-left">Total</th>
+                                    <th class="px-4 py-2 text-left">Status</th>
+                                    <th class="px-4 py-2 text-left">Update</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="order in recentOrders.slice(0,20)" :key="order.id" class="border-b hover:bg-gray-50">
+                                    <td class="px-4 py-3 font-bold text-orange-600">#{{ order.order_number }}</td>
+                                    <td class="px-4 py-3 text-gray-500">{{ formatTime(order.timestamp) }}</td>
+                                    <td class="px-4 py-3">{{ order.customer_name }}</td>
+                                    <td class="px-4 py-3">
+                                        <span :class="order.mode === 'delivery' ? 'text-blue-600' : 'text-green-600'" class="font-semibold">
+                                            <i :class="order.mode === 'delivery' ? 'fas fa-motorcycle' : 'fas fa-shopping-bag'" class="mr-1"></i>
+                                            {{ order.mode }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 font-bold">€{{ order.total.toFixed(2) }}</td>
+                                    <td class="px-4 py-3">
+                                        <span :class="getStatusClass(order.status)" class="px-2 py-1 rounded text-xs font-bold">
+                                            {{ order.status.toUpperCase() }}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <select v-if="order.status !== 'completed' && order.status !== 'cancelled'"
+                                            @change="quickUpdateStatus(order.id, $event.target.value)"
+                                            class="text-xs border rounded px-2 py-1">
+                                            <option value="">Change...</option>
+                                            <option value="cooking">Cooking</option>
+                                            <option value="ready">Ready</option>
+                                            <option value="completed">Completed</option>
+                                        </select>
+                                        <span v-else class="text-gray-400 text-xs">—</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
 
@@ -482,17 +540,30 @@
                         notes.forEach(({ f, t, d }) => {
                             const osc = ctx.createOscillator();
                             const gain = ctx.createGain();
-                            osc.connect(gain);
-                            gain.connect(ctx.destination);
-                            osc.type = 'sine';
-                            osc.frequency.value = f;
-                            const start = ctx.currentTime + t;
-                            gain.gain.setValueAtTime(0.4, start);
-                            gain.gain.exponentialRampToValueAtTime(0.001, start + d);
-                            osc.start(start);
-                            osc.stop(start + d);
+                            osc.connect(gain); gain.connect(ctx.destination);
+                            osc.type = 'sine'; osc.frequency.value = f;
+                            const s = ctx.currentTime + t;
+                            gain.gain.setValueAtTime(0.4, s);
+                            gain.gain.exponentialRampToValueAtTime(0.001, s + d);
+                            osc.start(s); osc.stop(s + d);
                         });
-                    } catch(e) { console.log('Sound unavailable'); }
+                    } catch(e) {}
+                },
+
+                async quickUpdateStatus(orderId, status) {
+                    if (!status) return;
+                    try {
+                        await fetch(`${this.apiUrl}/orders/${orderId}/status`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status, staff_pin: this.user.pin })
+                        });
+                        await this.loadOrders();
+                        await this.loadStats();
+                        this.showToast(`Order updated to ${status}`, 'success');
+                    } catch(err) {
+                        this.showToast('Failed to update', 'error');
+                    }
                 },
 
                 async login() {
