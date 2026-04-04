@@ -9,6 +9,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const Database = require('better-sqlite3');
 const crypto = require('crypto');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
@@ -20,7 +21,7 @@ const io = socketIo(server, {
 
 app.use(cors());
 app.use(express.json({limit: '50mb'}));
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 const dbPath = process.env.DATABASE_PATH || './raha_pos.db';
 let db;
