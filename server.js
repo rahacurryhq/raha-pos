@@ -419,7 +419,7 @@ app.post('/api/login', (req, res) => {
             loginTime: Date.now()
         });
 
-        db.prepare('UPDATE users SET last_login = datetime("now") WHERE id = ?').run(user.id);
+        db.prepare('UPDATE users SET last_login = datetime('now') WHERE id = ?').run(user.id);
         db.prepare('INSERT INTO staff_activity (user_id, staff_name, action, ip_address) VALUES (?, ?, ?, ?)')
             .run(user.id, user.name, 'login', req.ip);
 
@@ -554,7 +554,7 @@ app.put('/api/orders/:id/status', (req, res) => {
         const params = [status];
 
         if (timeField) {
-            query += `, ${timeField} = datetime("now")`;
+            query += `, ${timeField} = datetime('now')`;
         }
         query += ' WHERE id = ?';
         params.push(id);
@@ -643,7 +643,7 @@ app.delete('/api/admin/:type/:id', (req, res) => {
         if (permanent) {
             db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
         } else {
-            db.prepare(`UPDATE ${table} SET deleted = 1, deleted_by = ?, deleted_at = datetime("now") WHERE id = ?`)
+            db.prepare(`UPDATE ${table} SET deleted = 1, deleted_by = ?, deleted_at = datetime('now') WHERE id = ?`)
                 .run(admin_pin, id);
         }
 
