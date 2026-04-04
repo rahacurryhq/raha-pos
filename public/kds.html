@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAHA Kitchen Display</title>
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes pulse-border {
+            0%, 100% { border-color: rgb(239, 68, 68); }
+            50% { border-color: rgb(252, 165, 165); }
+        }
+        .urgent { animation: pulse-border 2s ease-in-out infinite; }
+    </style>
+</head>
+<body class="bg-gray-900">
+    <div id="app">
+        <!-- Login for Chef -->
+        <div v-if="!loggedIn" class="min-h-screen flex items-center justify-center bg-gray-900">
+            <div class="bg-gray-800 rounded-2xl shadow-2xl p-10 max-w-md w-full">
+                <div class="text-center mb-8">
+                    <h1 class="text-4xl font-bold text-orange-500 mb-2">🍳 Kitchen Display</h1>
+                    <p class="text-gray-400">Chef Login</p>
+                </div>
+                <div class="mb-6">
+                    <input 
+                        v-model="loginPin" 
+                        type="password" 
+                        maxlength="4"
+                        @keyup.enter="login"
+                        class="w-full px-4 py-3 text-2xl text-center bg-gray-700 text-white border-2 border-gray-600 rounded-lg focus:border-orange-500 focus:outline-none"
+                        placeholder="Enter Chef PIN"
+                        autofocus>
+                </div>
+                <button @click="login" class="w-full bg-orange-600 text-white py-3 rounded-lg font-bold text-lg hover:bg-orange-700 transition">
+                    <i class="fas fa-sign-in-alt mr-2"></i>Start Kitchen Display
+                </button>
+                <p class="text-center text-gray-500 text-sm mt-4">Default Chef PIN: 1111</p>
+            </div>
+        </div>
+
+        <!-- Kitchen Display -->
+        <div v-else class="min-h-screen text-white">
+            <!-- Header -->
+            <div class="bg-gray-800 shadow-lg border-b-4 border-orange-600">
+                <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+                    <div class="flex items-center space-x-4">
+                        <h1 class="text-3xl font-bold text-orange-500">🍳 KITCHEN DISPLAY</h1>
+                        <div v-if="connected" class="flex items-center space-x-2 bg-green-900 px-3 py-1 rounded-full">
+                            <div class="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                            <span class="text-sm text-green-200">Live</span>
+                        </div>
+                        <div v-else class="flex items-center space-x-2 bg-red-900 px-3 py-1 rounded-full">
+                            <div class="w-3 h-3 bg-red-400 rounded-full"></div>
+                            <span class="text-sm text-red-200">Offline</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-6">
+                        <div class="text-center">
+                            <p class="text-gray-400 text-sm">Pending</p>
+                            <p class="text-3xl font-bold text-yellow-500">{{ pendingCount }}</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-gray-400 text-sm">Cooking</p>
+                            <p class="text-3xl font-bold text-blue-500">{{ cookingCount }}</p>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-gray-400 text-sm">Ready</p>
+                            <p class="text-3xl font-bold text-green-500">{{ readyCount }}</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-2xl font-bold">{{ currentTime }}</div>
+                            <div class="text-sm text-gray-400">{{ currentDate }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Orders Grid -->
+            <div class="container mx-auto px-6 py-6">
+                <div v-if="activeOrders.length === 0" class="text-center py-20">
+                    <i class="fas fa-check-circle text-6xl text-green-500 mb-4"></i>
+                    <p class="text-2xl text-gray-400">All Caught Up!</p>
+                    <p class="text-gray-500">No pending orders</p>
+                </div>
+
+                <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div v-for="order in activeOrders" :key="order.id"
+                        :class="['bg-gray-800 rounded-xl shadow-2xl border-4 p-6 transition-all', 
+                                getOrderBorderClass(order),
+                                order.status === 'pending' && getMinutes(order.timestamp) > 15 ? 'urgent' : '']">
+                        
+                        <!-- Order Header -->
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h2 class="text-4xl font-bold text-white mb-1">Order #{{ order.order_number }}</h2>
+                                <p class="text-gray-400">{{ order.customer_name }}</p>
+                                <p :class="['text-sm font-semibold', order.mode === 'delivery' ? 'text-blue-400' : 'text-green-400']">
+                                    <i :class="['fas mr-1', order.mode === 'delivery' ? 'fa-motorcycle' : 'fa-shopping-bag']"></i>
+                                    {{ order.mode.toUpperCase() }}
+                                </p>
+                            </div>
+                            <div class="text-right">
+                                <div :class="['text-3xl font-bold', getTimerClass(order.timestamp)]">
+                                    {{ formatElapsedTime(order.timestamp) }}
+                                </div>
+                                <div class="text-sm text-gray-400">{{ formatTime(order.timestamp) }}</div>
+                            </div>
+                        </div>
+
+                        <!-- Order Items -->
+                        <div class="bg-gray-700 rounded-lg p-4 mb-4">
+                            <div v-for="(item, idx) in parseItems(order.items)" :key="idx" class="mb-2 last:mb-0">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-lg font-semibold">{{ item.qty }}x {{ item.name }}</span>
+                                    <span class="text-orange-400 font-bold">€{{ (item.price * item.qty).toFixed(2) }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Status Notes -->
+                        <div v-if="order.notes" class="bg-yellow-900 border-l-4 border-yellow-500 p-3 mb-4 rounded">
+                            <p class="text-sm text-yellow-200">
+                                <i class="fas fa-sticky-note mr-2"></i>{{ order.notes }}
+                            </p>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="grid grid-cols-2 gap-3">
+                            <button v-if="order.status === 'pending'" 
+                                @click="updateStatus(order.id, 'cooking')"
+                                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition">
+                                <i class="fas fa-fire mr-2"></i>Start Cooking
+                            </button>
+                            <button v-if="order.status === 'cooking'" 
+                                @click="updateStatus(order.id, 'ready')"
+                                class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition">
+                                <i class="fas fa-check mr-2"></i>Mark Ready
+                            </button>
+                            <button v-if="order.status === 'ready'" 
+                                @click="updateStatus(order.id, 'completed')"
+                                class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 rounded-lg transition">
+                                <i class="fas fa-check-double mr-2"></i>Picked Up
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Order Sound -->
+        <audio ref="newOrderSound" src="data:audio/wav;base64,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" preload="auto"></audio>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    apiUrl: window.location.origin + '/api',
+                    socket: null,
+                    loggedIn: false,
+                    loginPin: '',
+                    connected: false,
+                    currentTime: '',
+                    currentDate: '',
+                    orders: [],
+                    lastOrderCount: 0
+                };
+            },
+
+            computed: {
+                activeOrders() {
+                    return this.orders
+                        .filter(o => ['pending', 'cooking', 'ready'].includes(o.status))
+                        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+                },
+                pendingCount() {
+                    return this.orders.filter(o => o.status === 'pending').length;
+                },
+                cookingCount() {
+                    return this.orders.filter(o => o.status === 'cooking').length;
+                },
+                readyCount() {
+                    return this.orders.filter(o => o.status === 'ready').length;
+                }
+            },
+
+            methods: {
+                login() {
+                    // Simple chef login
+                    if (this.loginPin === '1111' || this.loginPin === '9999' || this.loginPin === '2222') {
+                        this.loggedIn = true;
+                        this.connectWebSocket();
+                        this.loadOrders();
+                    } else {
+                        alert('Invalid PIN. Chef PIN is 1111');
+                    }
+                },
+
+                connectWebSocket() {
+                    this.socket = io(window.location.origin);
+
+                    this.socket.on('connect', () => {
+                        this.connected = true;
+                    });
+
+                    this.socket.on('disconnect', () => {
+                        this.connected = false;
+                    });
+
+                    this.socket.on('new_order', (order) => {
+                        this.orders.unshift(order);
+                        this.playNewOrderSound();
+                    });
+
+                    this.socket.on('order_updated', (order) => {
+                        const idx = this.orders.findIndex(o => o.id === order.id);
+                        if (idx !== -1) {
+                            this.orders[idx] = order;
+                        }
+                    });
+                },
+
+                async loadOrders() {
+                    try {
+                        const res = await fetch(`${this.apiUrl}/orders?limit=100`);
+                        this.orders = await res.json();
+                    } catch (err) {
+                        console.error('Failed to load orders:', err);
+                    }
+                },
+
+                async updateStatus(orderId, status) {
+                    try {
+                        await fetch(`${this.apiUrl}/orders/${orderId}/status`, {
+                            method: 'PUT',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ status, staff_pin: this.loginPin })
+                        });
+                    } catch (err) {
+                        console.error('Failed to update status:', err);
+                    }
+                },
+
+                parseItems(items) {
+                    try {
+                        return typeof items === 'string' ? JSON.parse(items) : items;
+                    } catch {
+                        return [];
+                    }
+                },
+
+                formatTime(timestamp) {
+                    return new Date(timestamp).toLocaleTimeString();
+                },
+
+                formatElapsedTime(timestamp) {
+                    const mins = this.getMinutes(timestamp);
+                    return `${mins}m`;
+                },
+
+                getMinutes(timestamp) {
+                    const diff = Date.now() - new Date(timestamp).getTime();
+                    return Math.floor(diff / 60000);
+                },
+
+                getTimerClass(timestamp) {
+                    const mins = this.getMinutes(timestamp);
+                    if (mins > 15) return 'text-red-500';
+                    if (mins > 10) return 'text-yellow-500';
+                    return 'text-green-500';
+                },
+
+                getOrderBorderClass(order) {
+                    if (order.status === 'pending') return 'border-yellow-500';
+                    if (order.status === 'cooking') return 'border-blue-500';
+                    if (order.status === 'ready') return 'border-green-500';
+                    return 'border-gray-600';
+                },
+
+                playNewOrderSound() {
+                    try {
+                        this.$refs.newOrderSound.play();
+                    } catch (err) {
+                        console.log('Could not play sound:', err);
+                    }
+                },
+
+                updateTime() {
+                    const now = new Date();
+                    this.currentTime = now.toLocaleTimeString();
+                    this.currentDate = now.toLocaleDateString();
+                }
+            },
+
+            mounted() {
+                this.updateTime();
+                setInterval(this.updateTime, 1000);
+                setInterval(this.loadOrders, 5000); // Refresh every 5 seconds as backup
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
