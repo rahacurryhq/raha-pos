@@ -1,1579 +1,843 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAHA POS - Counter System</title>
-    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE RAHA POS</title>
+<script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+  .slide-in{animation:slideIn .2s ease}
+  @keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+  .table-available{border-color:#22c55e;background:#f0fdf4}
+  .table-occupied{border-color:#ef4444;background:#fef2f2}
+  .table-reserved{border-color:#f59e0b;background:#fffbeb}
+</style>
 </head>
-<body class="bg-gray-50">
-    <div id="app">
-        <!-- Login Screen -->
-        <div v-if="!user" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-500 to-red-600">
-            <div class="bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full">
-                <div class="text-center mb-8">
-                    <h1 class="text-4xl font-bold text-orange-600 mb-2">🍛 THE RAHA</h1>
-                    <p class="text-gray-600">Point of Sale System</p>
-                    <div v-if="connectionStatus === 'connected'" class="mt-2 flex items-center justify-center space-x-2">
-                        <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        <span class="text-xs text-green-600">Server Online</span>
-                    </div>
-                    <div v-else class="mt-2 flex items-center justify-center space-x-2">
-                        <div class="w-2 h-2 bg-red-500 rounded-full"></div>
-                        <span class="text-xs text-red-600">Server Offline</span>
-                    </div>
-                </div>
-                <div class="mb-6">
-                    <label class="block text-gray-700 font-semibold mb-2">Enter PIN:</label>
-                    <input 
-                        v-model="loginPin" 
-                        type="password" 
-                        maxlength="4"
-                        @keyup.enter="login"
-                        class="w-full px-4 py-3 text-2xl text-center border-2 rounded-lg focus:border-orange-500 focus:outline-none"
-                        placeholder="••••"
-                        autofocus>
-                </div>
-                <button @click="login" :disabled="loggingIn" class="w-full bg-orange-600 text-white py-3 rounded-lg font-bold text-lg hover:bg-orange-700 transition disabled:bg-gray-400">
-                    <span v-if="loggingIn"><i class="fas fa-spinner fa-spin mr-2"></i>Logging in...</span>
-                    <span v-else><i class="fas fa-sign-in-alt mr-2"></i>Login</span>
-                </button>
-                <div v-if="loginError" class="mt-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">
-                    {{ loginError }}
-                </div>
+<body class="bg-gray-100">
+<div id="app">
 
-            </div>
+<!-- LOGIN -->
+<div v-if="!user" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-500 to-red-600">
+  <div class="bg-white rounded-2xl shadow-2xl p-10 w-full max-w-sm">
+    <div class="text-center mb-8">
+      <div class="text-5xl mb-2">🍛</div>
+      <h1 class="text-3xl font-bold text-orange-600">THE RAHA</h1>
+      <p class="text-gray-500 text-sm mt-1">Point of Sale System</p>
+      <div class="mt-3 flex items-center justify-center gap-2">
+        <div :class="conn==='connected'?'bg-green-500 animate-pulse':'bg-red-400'" class="w-2 h-2 rounded-full"></div>
+        <span :class="conn==='connected'?'text-green-600':'text-red-500'" class="text-xs font-semibold">
+          {{ conn==='connected'?'Server Online':'Connecting...' }}
+        </span>
+      </div>
+    </div>
+    <input v-model="loginPin" type="password" maxlength="4" @keyup.enter="login"
+      class="w-full text-center text-3xl tracking-widest border-2 border-gray-200 rounded-xl py-4 mb-4 focus:border-orange-500 focus:outline-none"
+      placeholder="••••" autofocus>
+    <button @click="login" :disabled="loggingIn"
+      class="w-full bg-orange-600 text-white py-3 rounded-xl font-bold text-lg hover:bg-orange-700 disabled:bg-gray-300 transition">
+      <i class="fas fa-sign-in-alt mr-2"></i>{{ loggingIn?'Logging in...':'Login' }}
+    </button>
+    <p v-if="loginError" class="mt-3 text-red-600 text-sm text-center bg-red-50 rounded-lg py-2">{{ loginError }}</p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div v-else class="min-h-screen flex flex-col">
+
+  <!-- TOP NAV -->
+  <nav class="bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-xl flex-shrink-0">
+    <div class="px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <span class="text-xl font-bold">🍛 THE RAHA</span>
+        <span class="bg-white/20 px-2 py-0.5 rounded text-xs font-semibold capitalize">{{ user.role }}</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <a href="/kds.html" target="_blank" class="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-xs font-bold hidden sm:block">
+          <i class="fas fa-fire mr-1"></i>KDS
+        </a>
+        <a href="/table-order.html" target="_blank" class="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-xs font-bold hidden sm:block">
+          <i class="fas fa-tablet-alt mr-1"></i>Tables
+        </a>
+        <a href="/pickup.html" target="_blank" class="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-xs font-bold hidden md:block">
+          <i class="fas fa-bell mr-1"></i>Pickup
+        </a>
+        <div class="flex items-center gap-1 ml-1">
+          <div :class="conn==='connected'?'bg-green-400 animate-pulse':'bg-red-300'" class="w-2 h-2 rounded-full"></div>
+          <span class="text-xs hidden sm:block">{{ conn==='connected'?'Live':'Offline' }}</span>
         </div>
+        <span class="text-xs opacity-75 hidden lg:block ml-1">{{ currentTime }}</span>
+        <button @click="logout" class="bg-white text-orange-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-orange-50 ml-1">
+          <i class="fas fa-sign-out-alt mr-1"></i>Logout
+        </button>
+      </div>
+    </div>
+    <!-- TAB BAR -->
+    <div class="flex border-t border-white/20 overflow-x-auto">
+      <button v-for="tab in availableTabs" :key="tab.key"
+        @click="switchTab(tab.key)"
+        :class="activeTab===tab.key?'bg-white/25 border-b-2 border-white font-bold':'hover:bg-white/10'"
+        class="px-4 py-2.5 text-xs whitespace-nowrap flex items-center gap-1.5 transition flex-shrink-0">
+        <i :class="tab.icon" class="text-sm"></i>
+        <span>{{ tab.label }}</span>
+        <span v-if="tab.badge&&tab.badge>0" class="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center leading-none">{{ tab.badge }}</span>
+      </button>
+    </div>
+  </nav>
 
-        <!-- Main Application -->
-        <div v-else class="min-h-screen">
-            <!-- Top Navigation -->
-            <nav class="bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-lg">
-                <div class="container mx-auto px-4 py-4 flex justify-between items-center">
-                    <div class="flex items-center space-x-4">
-                        <h1 class="text-2xl font-bold">🍛 THE RAHA POS</h1>
-                        <span class="text-sm opacity-75">{{ user.name }} ({{ user.role }})</span>
-                    </div>
-                    <div class="flex items-center space-x-4">
-                        <a href="/kds.html" target="_blank" class="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-2 rounded-lg text-sm font-semibold transition">
-                            <i class="fas fa-utensils mr-1"></i>KDS
-                        </a>
-                        <a href="/monitor.html" target="_blank" v-if="user.role === 'admin' || user.role === 'manager'" class="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-2 rounded-lg text-sm font-semibold transition">
-                            <i class="fas fa-desktop mr-1"></i>Monitor
-                        </a>
-                        <a href="/pickup.html" target="_blank" class="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-3 py-2 rounded-lg text-sm font-semibold transition">
-                            <i class="fas fa-bell mr-1"></i>Pickup
-                        </a>
-                        <div class="text-right text-sm">
-                            <div>{{ currentDate }}</div>
-                            <div class="text-xs opacity-75">{{ currentTime }}</div>
-                        </div>
-                        <div v-if="connectionStatus === 'connected'" class="flex items-center space-x-2">
-                            <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                            <span class="text-xs">Live</span>
-                        </div>
-                        <div v-else class="flex items-center space-x-2 bg-red-700 px-3 py-1 rounded">
-                            <div class="w-2 h-2 bg-red-300 rounded-full"></div>
-                            <span class="text-xs">Offline</span>
-                        </div>
-                        <button @click="confirmLogout" class="bg-white text-orange-600 px-4 py-2 rounded-lg font-semibold hover:bg-orange-50 transition">
-                            <i class="fas fa-sign-out-alt mr-2"></i>Logout
-                        </button>
-                    </div>
-                </div>
-            </nav>
+  <!-- PAGE CONTENT -->
+  <div class="flex-1 overflow-auto p-4 max-w-screen-2xl mx-auto w-full">
 
-            <!-- Dashboard Stats -->
-            <div class="container mx-auto px-4 py-6">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-500 text-sm">Today's Orders</p>
-                                <p class="text-3xl font-bold text-orange-600">{{ stats.today_orders }}</p>
-                            </div>
-                            <i class="fas fa-shopping-cart text-4xl text-orange-200"></i>
-                        </div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-500 text-sm">Today's Revenue</p>
-                                <p class="text-3xl font-bold text-green-600">€{{ stats.today_revenue.toFixed(2) }}</p>
-                                <p v-if="user.role === 'admin'" class="text-xs text-gray-500">VAT: €{{ stats.today_vat?.toFixed(2) || '0.00' }}</p>
-                            </div>
-                            <i class="fas fa-euro-sign text-4xl text-green-200"></i>
-                        </div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-500 text-sm">Pending</p>
-                                <p class="text-3xl font-bold text-yellow-600">{{ stats.pending_orders }}</p>
-                            </div>
-                            <i class="fas fa-clock text-4xl text-yellow-200"></i>
-                        </div>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-6">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-500 text-sm">Cooking</p>
-                                <p class="text-3xl font-bold text-blue-600">{{ stats.cooking_orders }}</p>
-                            </div>
-                            <i class="fas fa-fire text-4xl text-blue-200"></i>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Quick Actions -->
-                <div class="bg-white rounded-lg shadow p-6 mb-6">
-                    <h2 class="text-xl font-bold mb-4">Quick Actions</h2>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <button @click="view = 'pos'" v-if="user.role !== 'chef'" class="bg-gradient-to-br from-orange-500 to-red-500 text-white p-6 rounded-lg hover:shadow-lg transition">
-                            <i class="fas fa-cash-register text-3xl mb-2"></i>
-                            <p class="font-bold">New Order</p>
-                        </button>
-                        <button @click="view = 'orders'" class="bg-gradient-to-br from-blue-500 to-indigo-500 text-white p-6 rounded-lg hover:shadow-lg transition">
-                            <i class="fas fa-list text-3xl mb-2"></i>
-                            <p class="font-bold">View Orders</p>
-                        </button>
-                        <button v-if="user.role === 'admin'" @click="view = 'vat'" class="bg-gradient-to-br from-purple-500 to-pink-500 text-white p-6 rounded-lg hover:shadow-lg transition">
-                            <i class="fas fa-percent text-3xl mb-2"></i>
-                            <p class="font-bold">VAT Reports</p>
-                        </button>
-                        <button v-if="user.role === 'admin'" @click="view = 'export'" class="bg-gradient-to-br from-teal-500 to-cyan-600 text-white p-6 rounded-lg hover:shadow-lg transition">
-                            <i class="fas fa-download text-3xl mb-2"></i>
-                            <p class="font-bold">Export Data</p>
-                        </button>
-                        <button v-if="user.role === 'admin'" @click="view = 'master'" class="bg-gradient-to-br from-red-700 to-gray-900 text-white p-6 rounded-lg hover:shadow-lg transition">
-                            <i class="fas fa-shield-alt text-3xl mb-2"></i>
-                            <p class="font-bold">Master Panel</p>
-                        </button>
-                        <button v-if="user.role === 'admin'" @click="view = 'master'" class="bg-gradient-to-br from-red-800 to-gray-900 text-white p-6 rounded-lg hover:shadow-lg transition">
-                            <i class="fas fa-shield-alt text-3xl mb-2"></i>
-                            <p class="font-bold">Master Panel</p>
-                        </button>
-                        <button @click="view = 'sales'; loadDailySales();" v-if="user.role === 'admin' || user.role === 'manager'" class="bg-gradient-to-br from-green-500 to-teal-500 text-white p-6 rounded-lg hover:shadow-lg transition">
-                            <i class="fas fa-chart-bar text-3xl mb-2"></i>
-                            <p class="font-bold">Sales Report</p>
-                        </button>
-                        <button @click="view = 'customers'; loadCustomers();" v-if="user.role !== 'chef'" class="bg-gradient-to-br from-yellow-500 to-orange-400 text-white p-6 rounded-lg hover:shadow-lg transition">
-                            <i class="fas fa-users text-3xl mb-2"></i>
-                            <p class="font-bold">Customers</p>
-                        </button>
-                        <button @click="view = 'dashboard'; loadOrders(); loadStats();" class="bg-gradient-to-br from-gray-500 to-gray-600 text-white p-6 rounded-lg hover:shadow-lg transition">
-                            <i class="fas fa-home text-3xl mb-2"></i>
-                            <p class="font-bold">Dashboard</p>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Dashboard Live Orders Panel -->
-                <div v-if="view === 'dashboard'" class="bg-white rounded-lg shadow p-6 mb-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold">Live Orders</h2>
-                        <button @click="loadOrders" class="text-sm text-orange-600 hover:text-orange-800">
-                            <i class="fas fa-sync mr-1"></i>Refresh
-                        </button>
-                    </div>
-                    <div v-if="recentOrders.length === 0" class="text-center py-10 text-gray-400">
-                        <i class="fas fa-receipt text-5xl mb-3"></i>
-                        <p>No orders yet today</p>
-                    </div>
-                    <div v-else class="overflow-x-auto">
-                        <table class="w-full text-sm">
-                            <thead class="bg-gray-100">
-                                <tr>
-                                    <th class="px-4 py-2 text-left">Order #</th>
-                                    <th class="px-4 py-2 text-left">Time</th>
-                                    <th class="px-4 py-2 text-left">Customer</th>
-                                    <th class="px-4 py-2 text-left">Mode</th>
-                                    <th class="px-4 py-2 text-left">Total</th>
-                                    <th class="px-4 py-2 text-left">Status</th>
-                                    <th class="px-4 py-2 text-left">Update</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="order in recentOrders.slice(0,20)" :key="order.id" class="border-b hover:bg-gray-50">
-                                    <td class="px-4 py-3 font-bold text-orange-600">#{{ order.order_number }}</td>
-                                    <td class="px-4 py-3 text-gray-500">{{ formatTime(order.timestamp) }}</td>
-                                    <td class="px-4 py-3">{{ order.customer_name }}</td>
-                                    <td class="px-4 py-3">
-                                        <span :class="order.mode === 'delivery' ? 'text-blue-600' : 'text-green-600'" class="font-semibold">
-                                            <i :class="order.mode === 'delivery' ? 'fas fa-motorcycle' : 'fas fa-shopping-bag'" class="mr-1"></i>
-                                            {{ order.mode }}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3 font-bold">€{{ order.total.toFixed(2) }}</td>
-                                    <td class="px-4 py-3">
-                                        <span :class="getStatusClass(order.status)" class="px-2 py-1 rounded text-xs font-bold">
-                                            {{ order.status.toUpperCase() }}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3">
-                                        <select v-if="order.status !== 'completed' && order.status !== 'cancelled'"
-                                            @change="quickUpdateStatus(order.id, $event.target.value)"
-                                            class="text-xs border rounded px-2 py-1">
-                                            <option value="">Change...</option>
-                                            <option value="cooking">Cooking</option>
-                                            <option value="ready">Ready</option>
-                                            <option value="completed">Completed</option>
-                                        </select>
-                                        <span v-else class="text-gray-400 text-xs">—</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- POS View -->
-                <div v-if="view === 'pos'" class="bg-white rounded-lg shadow p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-2xl font-bold">New Order</h2>
-                        <button @click="view = 'dashboard'" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-                            <i class="fas fa-arrow-left mr-2"></i>Back
-                        </button>
-                    </div>
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <!-- Menu -->
-                        <div class="lg:col-span-2">
-                            <div class="mb-4 flex gap-2">
-                                <input v-model="menuSearch" type="text" placeholder="Search menu..." 
-                                    class="flex-1 px-4 py-2 border rounded-lg">
-                                <select v-model="selectedCategory" class="px-4 py-2 border rounded-lg">
-                                    <option value="">All Categories</option>
-                                    <option v-for="cat in categories" :key="cat">{{ cat }}</option>
-                                </select>
-                            </div>
-                            <div v-if="loading" class="text-center py-8">
-                                <i class="fas fa-spinner fa-spin text-4xl text-orange-500"></i>
-                                <p class="mt-2 text-gray-500">Loading menu...</p>
-                            </div>
-                            <div v-else class="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[600px] overflow-y-auto">
-                                <div v-for="item in filteredMenu" :key="item.id"
-                                    @click="addToCart(item)"
-                                    class="bg-gradient-to-br from-orange-50 to-red-50 p-4 rounded-lg cursor-pointer hover:shadow-md transition border-2 border-transparent hover:border-orange-500">
-                                    <p class="font-bold text-gray-800">{{ item.name }}</p>
-                                    <p class="text-orange-600 font-bold text-lg">€{{ item.price.toFixed(2) }}</p>
-                                    <p v-if="item.allergens && item.allergens !== 'None'" class="text-xs text-red-600 mt-1">
-                                        <i class="fas fa-exclamation-triangle"></i> {{ item.allergens }}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Cart -->
-                        <div class="bg-gray-50 p-4 rounded-lg">
-                            <h3 class="font-bold text-lg mb-4">Current Order</h3>
-                            <div v-if="cart.length === 0" class="text-center text-gray-400 py-8">
-                                <i class="fas fa-shopping-cart text-4xl mb-2"></i>
-                                <p>Cart is empty</p>
-                            </div>
-                            <div v-else class="space-y-2 mb-4 max-h-[300px] overflow-y-auto">
-                                <div v-for="(item, idx) in cart" :key="idx" 
-                                    class="flex justify-between items-center bg-white p-3 rounded-lg">
-                                    <div class="flex-1">
-                                        <p class="font-semibold">{{ item.name }}</p>
-                                        <p class="text-sm text-gray-500">€{{ item.price.toFixed(2) }} x {{ item.qty }}</p>
-                                    </div>
-                                    <div class="flex items-center space-x-2">
-                                        <button @click="decreaseQty(idx)" class="w-8 h-8 bg-gray-200 rounded hover:bg-gray-300">
-                                            <i class="fas fa-minus text-xs"></i>
-                                        </button>
-                                        <span class="w-8 text-center font-bold">{{ item.qty }}</span>
-                                        <button @click="increaseQty(idx)" class="w-8 h-8 bg-gray-200 rounded hover:bg-gray-300">
-                                            <i class="fas fa-plus text-xs"></i>
-                                        </button>
-                                        <button @click="confirmRemove(idx)" class="text-red-500 hover:text-red-700 ml-2">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="border-t pt-4 space-y-2">
-                                <div class="flex justify-between">
-                                    <span>Subtotal:</span>
-                                    <span class="font-bold">€{{ cartSubtotal.toFixed(2) }}</span>
-                                </div>
-                                <div v-if="orderMode === 'delivery'" class="flex justify-between">
-                                    <span>Delivery:</span>
-                                    <span>€3.50</span>
-                                </div>
-                                <div class="flex justify-between text-xl font-bold text-orange-600 pt-2 border-t">
-                                    <span>Total:</span>
-                                    <span>€{{ cartTotal.toFixed(2) }}</span>
-                                </div>
-                            </div>
-                            <div class="mt-4 space-y-2">
-                                <select v-model="orderMode" class="w-full px-4 py-2 border rounded-lg">
-                                    <option value="collection">Collection</option>
-                                    <option value="delivery">Delivery</option>
-                                </select>
-                                <select v-model="paymentType" class="w-full px-4 py-2 border rounded-lg">
-                                    <option value="cash">Cash</option>
-                                    <option value="card">Card</option>
-                                    <option value="online">Online Payment</option>
-                                </select>
-                                <input v-model="customerName" type="text" placeholder="Customer name" 
-                                    class="w-full px-4 py-2 border rounded-lg">
-                                <input v-model="customerPhone" type="text" placeholder="Customer phone" 
-                                    class="w-full px-4 py-2 border rounded-lg">
-                                <textarea v-model="specialInstructions" placeholder="Special instructions (optional)" 
-                                    class="w-full px-4 py-2 border rounded-lg" rows="2"></textarea>
-                                <button @click="completeOrder" 
-                                    :disabled="cart.length === 0 || submittingOrder"
-                                    class="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition disabled:bg-gray-300">
-                                    <span v-if="submittingOrder"><i class="fas fa-spinner fa-spin mr-2"></i>Processing...</span>
-                                    <span v-else><i class="fas fa-check mr-2"></i>Complete Order</span>
-                                </button>
-                                <button @click="confirmClearCart" :disabled="cart.length === 0" class="w-full bg-gray-400 text-white py-2 rounded-lg hover:bg-gray-500 transition disabled:bg-gray-200">
-                                    Clear Cart
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Orders View -->
-                <div v-if="view === 'orders'" class="bg-white rounded-lg shadow p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-2xl font-bold">All Orders</h2>
-                        <button @click="view = 'dashboard'" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-                            <i class="fas fa-arrow-left mr-2"></i>Back
-                        </button>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead class="bg-gray-100">
-                                <tr>
-                                    <th class="px-4 py-2 text-left">Order #</th>
-                                    <th class="px-4 py-2 text-left">Time</th>
-                                    <th class="px-4 py-2 text-left">Customer</th>
-                                    <th class="px-4 py-2 text-left">Total</th>
-                                    <th class="px-4 py-2 text-left">Status</th>
-                                    <th class="px-4 py-2 text-left">Payment</th>
-                                    <th v-if="user.role === 'admin'" class="px-4 py-2 text-left">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="order in recentOrders" :key="order.id" class="border-b hover:bg-gray-50">
-                                    <td class="px-4 py-3 font-bold">#{{ order.order_number }}</td>
-                                    <td class="px-4 py-3 text-sm">{{ formatTime(order.timestamp) }}</td>
-                                    <td class="px-4 py-3">{{ order.customer_name }}</td>
-                                    <td class="px-4 py-3 font-bold">€{{ order.total.toFixed(2) }}</td>
-                                    <td class="px-4 py-3">
-                                        <span :class="getStatusClass(order.status)" class="px-2 py-1 rounded text-xs font-bold">
-                                            {{ order.status.toUpperCase() }}
-                                        </span>
-                                    </td>
-                                    <td class="px-4 py-3 text-sm">{{ order.payment_type }}</td>
-                                    <td v-if="user.role === 'admin'" class="px-4 py-3">
-                                        <button @click="confirmDelete(order)" class="text-red-600 hover:text-red-800">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- VAT Reports (Admin Only) -->
-                <div v-if="view === 'vat' && user.role === 'admin'" class="bg-white rounded-lg shadow p-6">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-2xl font-bold">VAT Reports & Management</h2>
-                        <button @click="view = 'dashboard'" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-                            <i class="fas fa-arrow-left mr-2"></i>Back
-                        </button>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <!-- VAT Report -->
-                        <div class="border rounded-lg p-4">
-                            <h3 class="font-bold text-lg mb-4">Generate VAT Report</h3>
-                            <div class="space-y-3">
-                                <div>
-                                    <label class="block text-sm font-semibold mb-1">From Date:</label>
-                                    <input v-model="vatReportFrom" type="date" class="w-full px-3 py-2 border rounded">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-semibold mb-1">To Date:</label>
-                                    <input v-model="vatReportTo" type="date" class="w-full px-3 py-2 border rounded">
-                                </div>
-                                <button @click="generateVATReport" class="w-full bg-purple-600 text-white py-2 rounded hover:bg-purple-700">
-                                    <i class="fas fa-file-alt mr-2"></i>Generate Report
-                                </button>
-                            </div>
-                            <div v-if="vatReport" class="mt-4 p-4 bg-purple-50 rounded">
-                                <h4 class="font-bold mb-2">Report Summary</h4>
-                                <div class="space-y-1 text-sm">
-                                    <p><strong>Orders:</strong> {{ vatReport.total_orders }}</p>
-                                    <p><strong>Revenue:</strong> €{{ vatReport.total_revenue.toFixed(2) }}</p>
-                                    <p><strong>VAT:</strong> €{{ vatReport.total_vat.toFixed(2) }}</p>
-                                    <p><strong>Net:</strong> €{{ vatReport.total_net.toFixed(2) }}</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- VAT Period Management -->
-                        <div class="border rounded-lg p-4">
-                            <h3 class="font-bold text-lg mb-4">VAT Periods</h3>
-                            <button @click="loadVATPeriods" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 mb-3">
-                                <i class="fas fa-sync mr-2"></i>Load VAT Periods
-                            </button>
-                            <div v-if="vatPeriods.length > 0" class="space-y-2 mb-4">
-                                <div v-for="period in vatPeriods" :key="period.id" class="p-3 bg-blue-50 rounded">
-                                    <p class="font-semibold">{{ period.vat_rate }}% VAT</p>
-                                    <p class="text-xs text-gray-600">{{ period.start_date }} to {{ period.end_date || 'Present' }}</p>
-                                    <p class="text-xs">{{ period.description }}</p>
-                                </div>
-                            </div>
-                            <div class="border-t pt-3">
-                                <h4 class="font-semibold mb-2">Add New Period</h4>
-                                <div class="space-y-2">
-                                    <input v-model="newVATPeriod.start_date" type="date" placeholder="Start date" class="w-full px-3 py-2 border rounded text-sm">
-                                    <input v-model="newVATPeriod.end_date" type="date" placeholder="End date (optional)" class="w-full px-3 py-2 border rounded text-sm">
-                                    <input v-model="newVATPeriod.vat_rate" type="number" step="0.1" placeholder="VAT rate %" class="w-full px-3 py-2 border rounded text-sm">
-                                    <input v-model="newVATPeriod.description" type="text" placeholder="Description" class="w-full px-3 py-2 border rounded text-sm">
-                                    <button @click="addVATPeriod" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 text-sm">
-                                        <i class="fas fa-plus mr-2"></i>Add Period
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-
-                <!-- Sales Report View -->
-                <div v-if="view === 'sales'" class="bg-white rounded-lg shadow p-6 mb-6">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold">📊 Daily Sales Report</h2>
-                        <div class="flex items-center space-x-3">
-                            <select v-model="salesDays" @change="loadDailySales" class="border rounded px-3 py-2 text-sm">
-                                <option value="7">Last 7 days</option>
-                                <option value="14">Last 14 days</option>
-                                <option value="30">Last 30 days</option>
-                                <option value="90">Last 90 days</option>
-                            </select>
-                            <button @click="view = 'dashboard'" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 text-sm">
-                                <i class="fas fa-arrow-left mr-1"></i>Back
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Summary Cards -->
-                    <div v-if="dailySales.length > 0" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        <div class="bg-green-50 rounded-lg p-4 text-center">
-                            <p class="text-sm text-gray-500">Total Revenue</p>
-                            <p class="text-2xl font-bold text-green-600">€{{ dailySales.reduce((s,d) => s + (d.revenue||0), 0).toFixed(2) }}</p>
-                        </div>
-                        <div class="bg-blue-50 rounded-lg p-4 text-center">
-                            <p class="text-sm text-gray-500">Total Orders</p>
-                            <p class="text-2xl font-bold text-blue-600">{{ dailySales.reduce((s,d) => s + (d.total_orders||0), 0) }}</p>
-                        </div>
-                        <div class="bg-orange-50 rounded-lg p-4 text-center">
-                            <p class="text-sm text-gray-500">Total VAT</p>
-                            <p class="text-2xl font-bold text-orange-600">€{{ dailySales.reduce((s,d) => s + (d.vat||0), 0).toFixed(2) }}</p>
-                        </div>
-                        <div class="bg-purple-50 rounded-lg p-4 text-center">
-                            <p class="text-sm text-gray-500">Avg Per Day</p>
-                            <p class="text-2xl font-bold text-purple-600">€{{ (dailySales.reduce((s,d) => s + (d.revenue||0), 0) / (dailySales.length || 1)).toFixed(2) }}</p>
-                        </div>
-                    </div>
-
-                    <div v-if="loadingSales" class="text-center py-10 text-gray-400">
-                        <i class="fas fa-spinner fa-spin text-4xl mb-3"></i>
-                        <p>Loading sales data...</p>
-                    </div>
-                    <div v-else-if="dailySales.length === 0" class="text-center py-10 text-gray-400">
-                        <i class="fas fa-chart-bar text-5xl mb-3"></i>
-                        <p>No sales data found</p>
-                    </div>
-                    <div v-else class="overflow-x-auto">
-                        <table class="w-full text-sm">
-                            <thead class="bg-gray-100">
-                                <tr>
-                                    <th class="px-4 py-3 text-left font-semibold">Date</th>
-                                    <th class="px-4 py-3 text-right font-semibold">Orders</th>
-                                    <th class="px-4 py-3 text-right font-semibold">Revenue</th>
-                                    <th class="px-4 py-3 text-right font-semibold">VAT</th>
-                                    <th class="px-4 py-3 text-right font-semibold">Net</th>
-                                    <th class="px-4 py-3 text-center font-semibold">Delivery</th>
-                                    <th class="px-4 py-3 text-center font-semibold">Collection</th>
-                                    <th class="px-4 py-3 text-center font-semibold">Cash</th>
-                                    <th class="px-4 py-3 text-center font-semibold">Card</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="day in dailySales" :key="day.date" class="border-b hover:bg-gray-50">
-                                    <td class="px-4 py-3 font-semibold">{{ formatDate(day.date) }}</td>
-                                    <td class="px-4 py-3 text-right font-bold text-blue-600">{{ day.total_orders }}</td>
-                                    <td class="px-4 py-3 text-right font-bold text-green-600">€{{ (day.revenue||0).toFixed(2) }}</td>
-                                    <td class="px-4 py-3 text-right text-orange-600">€{{ (day.vat||0).toFixed(2) }}</td>
-                                    <td class="px-4 py-3 text-right text-gray-600">€{{ (day.net||0).toFixed(2) }}</td>
-                                    <td class="px-4 py-3 text-center">
-                                        <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold">{{ day.delivery_count }}</span>
-                                    </td>
-                                    <td class="px-4 py-3 text-center">
-                                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">{{ day.collection_count }}</span>
-                                    </td>
-                                    <td class="px-4 py-3 text-center">
-                                        <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold">{{ day.cash_count }}</span>
-                                    </td>
-                                    <td class="px-4 py-3 text-center">
-                                        <span class="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold">{{ day.card_count }}</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Customers View -->
-                <div v-if="view === 'customers'" class="bg-white rounded-lg shadow p-6 mb-6">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold">👥 Customer Directory</h2>
-                        <button @click="view = 'dashboard'" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 text-sm">
-                            <i class="fas fa-arrow-left mr-1"></i>Back
-                        </button>
-                    </div>
-
-                    <!-- Add Customer Form -->
-                    <div class="bg-orange-50 rounded-lg p-4 mb-6 border border-orange-200">
-                        <h3 class="font-bold text-orange-700 mb-3"><i class="fas fa-user-plus mr-2"></i>Add / Update Customer</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <input v-model="newCustomer.name" type="text" placeholder="Name *" class="px-3 py-2 border rounded text-sm">
-                            <input v-model="newCustomer.phone" type="text" placeholder="Phone" class="px-3 py-2 border rounded text-sm">
-                            <input v-model="newCustomer.email" type="text" placeholder="Email" class="px-3 py-2 border rounded text-sm">
-                            <input v-model="newCustomer.address" type="text" placeholder="Address" class="px-3 py-2 border rounded text-sm md:col-span-2">
-                            <input v-model="newCustomer.allergen_info" type="text" placeholder="Allergies (e.g. nuts, dairy)" class="px-3 py-2 border rounded text-sm">
-                            <textarea v-model="newCustomer.delivery_notes" placeholder="Delivery notes" class="px-3 py-2 border rounded text-sm md:col-span-2" rows="2"></textarea>
-                            <button @click="saveCustomer" class="bg-orange-600 text-white py-2 rounded hover:bg-orange-700 text-sm font-bold">
-                                <i class="fas fa-save mr-1"></i>Save Customer
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Search -->
-                    <div class="mb-4 flex gap-3">
-                        <input v-model="customerSearch" @input="loadCustomers" type="text" placeholder="Search by name or phone..." class="flex-1 px-4 py-2 border rounded-lg text-sm">
-                        <button @click="loadCustomers" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm">
-                            <i class="fas fa-search mr-1"></i>Search
-                        </button>
-                    </div>
-
-                    <!-- Customer List -->
-                    <div v-if="loadingCustomers" class="text-center py-10 text-gray-400">
-                        <i class="fas fa-spinner fa-spin text-4xl"></i>
-                    </div>
-                    <div v-else-if="customers.length === 0" class="text-center py-10 text-gray-400">
-                        <i class="fas fa-users text-5xl mb-3"></i>
-                        <p>No customers found</p>
-                        <p class="text-sm mt-1">Customers are saved automatically when orders are placed with a name and phone number</p>
-                    </div>
-                    <div v-else>
-                        <p class="text-sm text-gray-500 mb-3">{{ customers.length }} customer(s) found</p>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div v-for="customer in customers" :key="customer.id"
-                                class="border rounded-lg p-4 hover:border-orange-300 transition cursor-pointer"
-                                @click="selectedCustomer = selectedCustomer?.id === customer.id ? null : customer; if(selectedCustomer) loadCustomerOrders(customer.id)">
-                                <div class="flex justify-between items-start">
-                                    <div class="flex-1">
-                                        <p class="font-bold text-gray-800">{{ customer.name }}</p>
-                                        <p v-if="customer.phone" class="text-sm text-gray-500"><i class="fas fa-phone mr-1"></i>{{ customer.phone }}</p>
-                                        <p v-if="customer.address" class="text-sm text-gray-500 truncate"><i class="fas fa-map-marker-alt mr-1"></i>{{ customer.address }}</p>
-                                        <p v-if="customer.allergen_info" class="text-xs text-red-600 mt-1"><i class="fas fa-exclamation-triangle mr-1"></i>{{ customer.allergen_info }}</p>
-                                        <p v-if="customer.delivery_notes" class="text-xs text-blue-600 mt-1"><i class="fas fa-sticky-note mr-1"></i>{{ customer.delivery_notes }}</p>
-                                    </div>
-                                    <div class="text-right ml-3">
-                                        <span class="bg-orange-100 text-orange-700 px-2 py-1 rounded text-xs font-bold block mb-1">{{ customer.total_orders }} orders</span>
-                                        <span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold block">€{{ (customer.total_spent||0).toFixed(2) }}</span>
-                                    </div>
-                                </div>
-
-                                <!-- Expanded: Order History -->
-                                <div v-if="selectedCustomer?.id === customer.id" class="mt-4 border-t pt-3">
-                                    <p class="text-sm font-semibold mb-2 text-gray-600">Order History</p>
-                                    <div v-if="customerOrders.length === 0" class="text-sm text-gray-400">No orders found</div>
-                                    <div v-for="co in customerOrders" :key="co.id" class="text-xs bg-gray-50 rounded p-2 mb-1 flex justify-between">
-                                        <span class="font-bold">#{{ co.order_number }} — {{ formatDate(co.timestamp.split('T')[0]) }}</span>
-                                        <span class="text-green-600 font-bold">€{{ co.total.toFixed(2) }}</span>
-                                        <span :class="getStatusClass(co.status)" class="px-1 rounded">{{ co.status }}</span>
-                                    </div>
-                                    <button @click="prefillCustomer(customer)" class="mt-2 w-full bg-orange-500 text-white py-1 rounded text-xs hover:bg-orange-600">
-                                        <i class="fas fa-cart-plus mr-1"></i>New Order for this Customer
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-
-                <!-- Master Panel (Admin only - requires MASTER_PASSWORD env var) -->
-                <div v-if="view === 'master' && user.role === 'admin'" class="mb-6">
-                    <div class="bg-gray-900 rounded-lg shadow p-6 mb-4">
-                        <div class="flex justify-between items-center mb-6">
-                            <div>
-                                <h2 class="text-2xl font-bold text-white">🔐 Master Panel</h2>
-                                <p class="text-gray-400 text-sm mt-1">Requires MASTER_PASSWORD environment variable set in Railway</p>
-                            </div>
-                            <button @click="view = 'dashboard'" class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-600 text-sm">
-                                <i class="fas fa-arrow-left mr-1"></i>Back
-                            </button>
-                        </div>
-
-                        <!-- Master Password Input -->
-                        <div class="bg-gray-800 rounded-lg p-4 mb-6">
-                            <label class="block text-gray-300 font-semibold mb-2">Master Password</label>
-                            <div class="flex gap-3">
-                                <input v-model="masterPassword" :type="showMasterPw ? 'text' : 'password'"
-                                    placeholder="Enter master password"
-                                    class="flex-1 px-4 py-2 bg-gray-700 text-white border border-gray-600 rounded-lg focus:border-red-500 focus:outline-none">
-                                <button @click="showMasterPw = !showMasterPw" class="bg-gray-600 text-white px-3 py-2 rounded hover:bg-gray-500">
-                                    <i :class="showMasterPw ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- DB Info -->
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                            <button @click="loadMasterInfo" class="md:col-span-3 bg-blue-700 text-white py-2 rounded hover:bg-blue-800 font-semibold">
-                                <i class="fas fa-info-circle mr-2"></i>Load Database Info
-                            </button>
-                            <div v-if="masterInfo" class="bg-gray-800 rounded p-4 text-center">
-                                <p class="text-gray-400 text-sm">Database Size</p>
-                                <p class="text-2xl font-bold text-blue-400">{{ masterInfo.db_size_kb }} KB</p>
-                                <p class="text-gray-500 text-xs">{{ masterInfo.db_size_mb }} MB</p>
-                            </div>
-                            <div v-if="masterInfo" class="bg-gray-800 rounded p-4 text-center">
-                                <p class="text-gray-400 text-sm">Total Orders</p>
-                                <p class="text-2xl font-bold text-green-400">{{ masterInfo.total_orders }}</p>
-                                <p class="text-gray-500 text-xs">€{{ (masterInfo.total_revenue||0).toFixed(2) }} revenue</p>
-                            </div>
-                            <div v-if="masterInfo" class="bg-gray-800 rounded p-4 text-center">
-                                <p class="text-gray-400 text-sm">Total Customers</p>
-                                <p class="text-2xl font-bold text-yellow-400">{{ masterInfo.total_customers }}</p>
-                                <p class="text-gray-500 text-xs">Since {{ masterInfo.oldest_order ? masterInfo.oldest_order.split('T')[0] : 'N/A' }}</p>
-                            </div>
-                        </div>
-
-                        <!-- Export Data -->
-                        <div class="bg-gray-800 rounded-lg p-4 mb-6">
-                            <h3 class="text-white font-bold mb-2"><i class="fas fa-download mr-2 text-green-400"></i>Export All Data</h3>
-                            <p class="text-gray-400 text-sm mb-3">Downloads a complete JSON backup of all orders, customers, sales, VAT records and settings.</p>
-                            <button @click="exportData" class="w-full bg-green-700 text-white py-3 rounded hover:bg-green-800 font-bold">
-                                <i class="fas fa-file-download mr-2"></i>Download Full Backup (JSON)
-                            </button>
-                        </div>
-
-                        <!-- DANGER ZONE -->
-                        <div class="bg-red-950 border-2 border-red-700 rounded-lg p-4">
-                            <h3 class="text-red-400 font-bold text-lg mb-2"><i class="fas fa-skull-crossbones mr-2"></i>DANGER ZONE — Permanent Wipe</h3>
-                            <p class="text-red-300 text-sm mb-4">This <strong>permanently deletes ALL data forever</strong> — all orders, customers, sales history. There is NO recovery. The database file is wiped and vacuumed.</p>
-                            <div v-if="!confirmWipe">
-                                <button @click="confirmWipe = true" class="w-full bg-red-700 text-white py-3 rounded hover:bg-red-800 font-bold">
-                                    <i class="fas fa-trash-alt mr-2"></i>Initiate Permanent Wipe...
-                                </button>
-                            </div>
-                            <div v-else class="space-y-3">
-                                <p class="text-red-300 text-sm font-bold">Type exactly: <span class="font-mono bg-red-900 px-2 py-1 rounded">WIPE EVERYTHING</span></p>
-                                <input v-model="wipeConfirmText" type="text" placeholder="WIPE EVERYTHING"
-                                    class="w-full px-4 py-2 bg-gray-900 text-red-300 border border-red-600 rounded font-mono focus:outline-none">
-                                <div class="flex gap-3">
-                                    <button @click="confirmWipe = false; wipeConfirmText = ''" class="flex-1 bg-gray-700 text-white py-2 rounded hover:bg-gray-600">
-                                        Cancel
-                                    </button>
-                                    <button @click="executeWipe"
-                                        :disabled="wipeConfirmText !== 'WIPE EVERYTHING'"
-                                        class="flex-1 bg-red-700 text-white py-2 rounded hover:bg-red-800 font-bold disabled:opacity-30 disabled:cursor-not-allowed">
-                                        <i class="fas fa-bomb mr-2"></i>WIPE FOREVER
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Railway Volume Instructions -->
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                        <h3 class="font-bold text-blue-800 text-lg mb-3"><i class="fas fa-hdd mr-2"></i>How to make your data persist on Railway</h3>
-                        <p class="text-blue-700 text-sm mb-3">Without this setup, data is wiped every time Railway redeploys. Follow these steps:</p>
-                        <ol class="text-sm text-blue-700 space-y-2 list-decimal list-inside">
-                            <li>Go to your Railway project dashboard</li>
-                            <li>Click your <strong>raha-pos</strong> service</li>
-                            <li>Click <strong>Settings</strong> tab</li>
-                            <li>Scroll to <strong>Volumes</strong> → click <strong>Add Volume</strong></li>
-                            <li>Mount path: <strong class="font-mono bg-blue-100 px-1 rounded">/data</strong></li>
-                            <li>Then go to <strong>Variables</strong> tab and add:<br>
-                                <span class="font-mono bg-blue-100 px-2 py-1 rounded text-xs block mt-1">DATABASE_PATH=/data/raha_pos.db</span>
-                                <span class="font-mono bg-blue-100 px-2 py-1 rounded text-xs block mt-1">MASTER_PASSWORD=your-secret-password-here</span>
-                            </li>
-                            <li>Click <strong>Deploy</strong> — your data will now survive forever</li>
-                        </ol>
-                    </div>
-                </div>
-
-
-                <!-- Master Panel (Admin only) -->
-                <div v-if="view === 'master' && user.role === 'admin'" class="mb-6">
-
-                    <!-- DB Info Card -->
-                    <div class="bg-gray-900 text-white rounded-lg shadow p-6 mb-4">
-                        <div class="flex justify-between items-center mb-4">
-                            <h2 class="text-2xl font-bold"><i class="fas fa-shield-alt text-red-400 mr-2"></i>Master Panel</h2>
-                            <button @click="view = 'dashboard'" class="bg-gray-700 text-white px-4 py-2 rounded hover:bg-gray-600 text-sm">
-                                <i class="fas fa-arrow-left mr-1"></i>Back
-                            </button>
-                        </div>
-                        <p class="text-gray-400 text-sm mb-4">All actions here require your master password. This is set in Railway environment variables as <code class="bg-gray-700 px-1 rounded">MASTER_PASSWORD</code>.</p>
-
-                        <!-- Master password input -->
-                        <div class="mb-4">
-                            <label class="block text-gray-300 text-sm font-semibold mb-2">Master Password:</label>
-                            <input v-model="masterPassword" type="password" placeholder="Enter master password"
-                                class="w-full md:w-96 px-4 py-2 bg-gray-800 border border-gray-600 rounded text-white focus:border-red-500 focus:outline-none">
-                        </div>
-
-                        <!-- DB Info -->
-                        <button @click="loadDbInfo" :disabled="!masterPassword" class="bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm font-semibold disabled:bg-gray-700 disabled:cursor-not-allowed">
-                            <i class="fas fa-database mr-1"></i>Load Database Info
-                        </button>
-
-                        <div v-if="dbInfo" class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-                            <div class="bg-gray-800 rounded p-3 text-center">
-                                <p class="text-gray-400 text-xs">DB Size</p>
-                                <p class="text-xl font-bold text-blue-400">{{ dbInfo.db_size_kb }} KB</p>
-                            </div>
-                            <div class="bg-gray-800 rounded p-3 text-center">
-                                <p class="text-gray-400 text-xs">Total Orders</p>
-                                <p class="text-xl font-bold text-green-400">{{ dbInfo.total_orders }}</p>
-                            </div>
-                            <div class="bg-gray-800 rounded p-3 text-center">
-                                <p class="text-gray-400 text-xs">Total Customers</p>
-                                <p class="text-xl font-bold text-yellow-400">{{ dbInfo.total_customers }}</p>
-                            </div>
-                            <div class="bg-gray-800 rounded p-3 text-center">
-                                <p class="text-gray-400 text-xs">Total Revenue</p>
-                                <p class="text-xl font-bold text-orange-400">€{{ (dbInfo.total_revenue||0).toFixed(2) }}</p>
-                            </div>
-                            <div class="bg-gray-800 rounded p-3 col-span-2 text-center">
-                                <p class="text-gray-400 text-xs">First Order</p>
-                                <p class="text-sm font-bold text-gray-200">{{ dbInfo.oldest_order || 'None yet' }}</p>
-                            </div>
-                            <div class="bg-gray-800 rounded p-3 col-span-2 text-center">
-                                <p class="text-gray-400 text-xs">Latest Order</p>
-                                <p class="text-sm font-bold text-gray-200">{{ dbInfo.newest_order || 'None yet' }}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Export Card -->
-                    <div class="bg-white border-2 border-blue-200 rounded-lg shadow p-6 mb-4">
-                        <h3 class="text-lg font-bold text-blue-700 mb-2"><i class="fas fa-download mr-2"></i>Export All Data</h3>
-                        <p class="text-gray-600 text-sm mb-4">Downloads a complete JSON file of all orders, customers, sales, VAT records and activity logs. Keep this safe — it's your backup.</p>
-                        <button @click="exportData" :disabled="!masterPassword" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed">
-                            <i class="fas fa-file-download mr-2"></i>Download Full Backup (.json)
-                        </button>
-                    </div>
-
-                    <!-- Wipe Card -->
-                    <div class="bg-white border-2 border-red-300 rounded-lg shadow p-6">
-                        <h3 class="text-lg font-bold text-red-700 mb-2"><i class="fas fa-skull-crossbones mr-2"></i>Permanent Data Wipe</h3>
-                        <p class="text-gray-600 text-sm mb-3">This permanently deletes ALL orders, customers, and sales data. <strong>This cannot be undone. Ever.</strong> Menu and VAT settings are kept.</p>
-                        <div class="bg-red-50 border border-red-200 rounded p-3 mb-4">
-                            <p class="text-red-700 text-sm font-semibold">To confirm, type exactly: <code class="bg-red-100 px-1 rounded">WIPE EVERYTHING</code></p>
-                            <input v-model="wipeConfirm" type="text" placeholder="Type WIPE EVERYTHING to confirm"
-                                class="mt-2 w-full px-4 py-2 border-2 border-red-300 rounded focus:border-red-500 focus:outline-none text-sm">
-                        </div>
-                        <button @click="wipeData"
-                            :disabled="!masterPassword || wipeConfirm !== 'WIPE EVERYTHING'"
-                            class="bg-red-700 hover:bg-red-800 text-white px-6 py-2 rounded font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed">
-                            <i class="fas fa-trash mr-2"></i>Permanently Wipe All Data
-                        </button>
-                        <p v-if="wipeConfirm && wipeConfirm !== 'WIPE EVERYTHING'" class="text-red-500 text-xs mt-2">Phrase must match exactly</p>
-                    </div>
-                </div>
-
-
-                <!-- Export Data View (Admin Only) -->
-                <div v-if="view === 'export' && user.role === 'admin'" class="bg-white rounded-lg shadow p-6 mb-6">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold">📥 Export Data</h2>
-                        <button @click="view = 'dashboard'" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 text-sm">
-                            <i class="fas fa-arrow-left mr-1"></i>Back
-                        </button>
-                    </div>
-                    <p class="text-gray-500 mb-6 text-sm">Download your data as CSV files — open in Excel, Google Sheets, or any spreadsheet app.</p>
-
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-
-                        <!-- Orders Export -->
-                        <div class="border-2 border-blue-200 rounded-xl p-6">
-                            <div class="text-center mb-4">
-                                <i class="fas fa-receipt text-4xl text-blue-500 mb-3"></i>
-                                <h3 class="text-xl font-bold">Orders</h3>
-                                <p class="text-sm text-gray-500 mt-1">All order history with customer details, totals, VAT, payment type</p>
-                            </div>
-                            <div class="space-y-3">
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-600 mb-1">From Date (optional)</label>
-                                    <input v-model="exportOrderFrom" type="date" class="w-full px-3 py-2 border rounded text-sm">
-                                </div>
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-600 mb-1">To Date (optional)</label>
-                                    <input v-model="exportOrderTo" type="date" class="w-full px-3 py-2 border rounded text-sm">
-                                </div>
-                                <button @click="exportOrders" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">
-                                    <i class="fas fa-download mr-2"></i>Download Orders CSV
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Customers Export -->
-                        <div class="border-2 border-orange-200 rounded-xl p-6">
-                            <div class="text-center mb-4">
-                                <i class="fas fa-users text-4xl text-orange-500 mb-3"></i>
-                                <h3 class="text-xl font-bold">Customers</h3>
-                                <p class="text-sm text-gray-500 mt-1">Full customer directory with contact info, order count, total spent</p>
-                            </div>
-                            <div class="space-y-3">
-                                <div class="bg-orange-50 rounded-lg p-3 text-sm text-orange-700">
-                                    <i class="fas fa-info-circle mr-1"></i>
-                                    Exports all customers including phone, address, allergies and delivery notes
-                                </div>
-                                <button @click="exportCustomers" class="w-full bg-orange-600 text-white py-3 rounded-lg font-bold hover:bg-orange-700 transition mt-auto">
-                                    <i class="fas fa-download mr-2"></i>Download Customers CSV
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Sales Export -->
-                        <div class="border-2 border-green-200 rounded-xl p-6">
-                            <div class="text-center mb-4">
-                                <i class="fas fa-chart-bar text-4xl text-green-500 mb-3"></i>
-                                <h3 class="text-xl font-bold">Daily Sales</h3>
-                                <p class="text-sm text-gray-500 mt-1">Day-by-day revenue, VAT, orders, delivery vs collection, cash vs card</p>
-                            </div>
-                            <div class="space-y-3">
-                                <div>
-                                    <label class="block text-xs font-semibold text-gray-600 mb-1">Period</label>
-                                    <select v-model="exportSalesDays" class="w-full px-3 py-2 border rounded text-sm">
-                                        <option value="30">Last 30 days</option>
-                                        <option value="90">Last 90 days</option>
-                                        <option value="180">Last 6 months</option>
-                                        <option value="365">Last 12 months</option>
-                                        <option value="9999">All time</option>
-                                    </select>
-                                </div>
-                                <button @click="exportSales" class="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition">
-                                    <i class="fas fa-download mr-2"></i>Download Sales CSV
-                                </button>
-                            </div>
-                        </div>
-
-                    </div>
-
-                    <!-- Info Box -->
-                    <div class="mt-6 bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
-                        <p class="font-semibold mb-1"><i class="fas fa-lock mr-2 text-green-600"></i>Your data is yours</p>
-                        <p>These CSV files contain your full business data. Keep them safe — they are your backup. We recommend downloading a sales export monthly and keeping it somewhere safe like Google Drive or email it to yourself.</p>
-                    </div>
-                </div>
-
-                <!-- Toast Notifications -->
-                <div v-if="toast" class="fixed bottom-4 right-4 z-50 animate-fade-in">
-                    <div :class="['px-6 py-4 rounded-lg shadow-lg text-white', toast.type === 'success' ? 'bg-green-500' : 'bg-red-500']">
-                        <i :class="['fas mr-2', toast.type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle']"></i>
-                        {{ toast.message }}
-                    </div>
-                </div>
-
-                <!-- Confirmation Dialog -->
-                <div v-if="confirmDialog" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div class="bg-white rounded-lg p-6 max-w-md w-full">
-                        <h3 class="text-xl font-bold mb-4">{{ confirmDialog.title }}</h3>
-                        <p class="mb-6">{{ confirmDialog.message }}</p>
-                        <div v-if="confirmDialog.requirePIN" class="mb-4">
-                            <label class="block font-semibold mb-2">Enter Admin PIN:</label>
-                            <input v-model="confirmPIN" type="password" maxlength="4" class="w-full px-4 py-2 border rounded" autofocus>
-                        </div>
-                        <div class="flex gap-3">
-                            <button @click="cancelConfirm" class="flex-1 bg-gray-400 text-white py-2 rounded hover:bg-gray-500">
-                                Cancel
-                            </button>
-                            <button @click="proceedConfirm" class="flex-1 bg-red-600 text-white py-2 rounded hover:bg-red-700">
-                                Confirm
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <!-- ========== DASHBOARD ========== -->
+    <div v-if="activeTab==='dashboard'" class="slide-in space-y-4">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-xl shadow p-4">
+          <p class="text-gray-400 text-xs mb-1">Today's Orders</p>
+          <p class="text-3xl font-black text-orange-600">{{ stats.today_orders||0 }}</p>
         </div>
+        <div class="bg-white rounded-xl shadow p-4">
+          <p class="text-gray-400 text-xs mb-1">Revenue</p>
+          <p class="text-3xl font-black text-green-600">€{{ (stats.today_revenue||0).toFixed(2) }}</p>
+          <p v-if="user.role==='admin'" class="text-xs text-gray-400 mt-0.5">VAT: €{{ (stats.today_vat||0).toFixed(2) }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-4">
+          <p class="text-gray-400 text-xs mb-1">Pending Orders</p>
+          <p class="text-3xl font-black text-yellow-600">{{ stats.pending_orders||0 }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-4">
+          <p class="text-gray-400 text-xs mb-1">Tables Occupied</p>
+          <p class="text-3xl font-black text-blue-600">{{ occupiedTables }}/10</p>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="font-bold text-lg">Live Orders</h2>
+          <button @click="loadOrders" class="text-orange-600 text-sm hover:text-orange-800"><i class="fas fa-sync mr-1"></i>Refresh</button>
+        </div>
+        <div v-if="orders.length===0" class="text-center py-10 text-gray-400">
+          <i class="fas fa-receipt text-4xl mb-2 block"></i>No orders yet today
+        </div>
+        <div v-else class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500 text-xs uppercase">
+              <tr>
+                <th class="px-3 py-2 text-left">Order</th>
+                <th class="px-3 py-2 text-left">Time</th>
+                <th class="px-3 py-2 text-left">Customer</th>
+                <th class="px-3 py-2 text-left">Type</th>
+                <th class="px-3 py-2 text-right">Total</th>
+                <th class="px-3 py-2 text-left">Payment</th>
+                <th class="px-3 py-2 text-left">Status</th>
+                <th class="px-3 py-2 text-left">Update</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="o in orders.slice(0,25)" :key="o.id" class="border-t hover:bg-orange-50 transition">
+                <td class="px-3 py-2.5 font-bold text-orange-600">#{{ o.order_number }}</td>
+                <td class="px-3 py-2.5 text-gray-400 text-xs">{{ fmtTime(o.timestamp) }}</td>
+                <td class="px-3 py-2.5 font-medium">{{ o.customer_name }}</td>
+                <td class="px-3 py-2.5">
+                  <span v-if="o.table_number" class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-bold">🍽️ T{{ o.table_number }}</span>
+                  <span v-else-if="o.mode==='delivery'" class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-bold">🛵 Delivery</span>
+                  <span v-else class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">🛍️ Takeaway</span>
+                </td>
+                <td class="px-3 py-2.5 text-right font-bold">€{{ (o.total||0).toFixed(2) }}</td>
+                <td class="px-3 py-2.5 text-xs capitalize text-gray-500">{{ o.payment_type }}</td>
+                <td class="px-3 py-2.5"><span :class="statusClass(o.status)" class="px-2 py-0.5 rounded-full text-xs font-bold">{{ o.status.toUpperCase() }}</span></td>
+                <td class="px-3 py-2.5">
+                  <select v-if="!['completed','cancelled'].includes(o.status)" @change="quickStatus(o.id,$event.target.value)" class="text-xs border rounded px-1.5 py-0.5 bg-white">
+                    <option value="">Change...</option>
+                    <option value="cooking">🔥 Cooking</option>
+                    <option value="ready">✅ Ready</option>
+                    <option value="completed">✔️ Done</option>
+                  </select>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
-    <script>
-        const { createApp } = Vue;
+    <!-- ========== NEW ORDER (POS) ========== -->
+    <div v-if="activeTab==='pos'" class="slide-in">
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
 
-        createApp({
-            data() {
-                return {
-                    apiUrl: window.location.origin + '/api',
-                    socket: null,
-                    connectionStatus: 'disconnected',
-                    
-                    user: null,
-                    loginPin: '',
-                    loginError: '',
-                    loggingIn: false,
-                    
-                    view: 'dashboard',
-                    currentTime: '',
-                    currentDate: '',
-                    toast: null,
-                    
-                    stats: {
-                        today_orders: 0,
-                        today_revenue: 0,
-                        today_vat: 0,
-                        pending_orders: 0,
-                        cooking_orders: 0,
-                        ready_orders: 0
-                    },
-                    
-                    cart: [],
-                    orderMode: 'collection',
-                    paymentType: 'cash',
-                    customerName: 'Guest',
-                    customerPhone: '',
-                    specialInstructions: '',
-                    menuSearch: '',
-                    selectedCategory: '',
-                    loading: false,
-                    submittingOrder: false,
-                    
-                    menu: [],
-                    recentOrders: [],
-                    
-                    confirmDialog: null,
-                    confirmPIN: '',
-                    
-                    vatReportFrom: '',
-                    vatReportTo: '',
-                    vatReport: null,
-                    vatPeriods: [],
-                    newVATPeriod: {
-                        start_date: '',
-                        end_date: '',
-                        vat_rate: '',
-                        description: ''
-                    },
+        <!-- MENU -->
+        <div class="xl:col-span-2 bg-white rounded-xl shadow p-4">
+          <div class="flex flex-wrap gap-2 mb-4">
+            <input v-model="menuSearch" type="text" placeholder="🔍 Search menu..." class="flex-1 min-w-[120px] border rounded-xl px-3 py-2 text-sm">
+            <button v-for="c in courses" :key="c.key"
+              @click="activeCourse=c.key"
+              :class="activeCourse===c.key?'bg-orange-600 text-white shadow-lg scale-105':'bg-gray-100 text-gray-600 hover:bg-orange-100'"
+              class="px-3 py-2 rounded-xl text-sm font-semibold transition-all">
+              {{ c.icon }} {{ c.label }}
+            </button>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[65vh] overflow-y-auto pr-1">
+            <div v-for="item in filteredMenu" :key="item.id"
+              @click="addToCart(item)"
+              class="border-2 border-transparent hover:border-orange-400 bg-gradient-to-br from-orange-50 to-red-50 rounded-xl p-3 cursor-pointer transition-all hover:shadow-md active:scale-95">
+              <div class="flex justify-between items-start">
+                <p class="font-bold text-sm text-gray-800 leading-snug flex-1 mr-1">{{ item.name }}</p>
+                <p class="text-orange-600 font-black text-sm whitespace-nowrap">€{{ item.price.toFixed(2) }}</p>
+              </div>
+              <p v-if="item.allergens&&item.allergens!=='None'" class="text-xs text-red-500 mt-1 leading-tight">
+                ⚠️ {{ item.allergens }}
+              </p>
+              <span class="inline-block mt-1 text-xs bg-white/80 text-gray-500 px-1.5 py-0.5 rounded capitalize">{{ item.course }}</span>
+            </div>
+          </div>
+        </div>
 
-                    // Sales Report
-                    dailySales: [],
-                    salesDays: 30,
-                    loadingSales: false,
+        <!-- ORDER CART -->
+        <div class="bg-white rounded-xl shadow p-4 flex flex-col max-h-[90vh] sticky top-4">
+          <h3 class="font-black text-xl mb-3">📋 Order</h3>
 
-                    // Customers
-                    customers: [],
-                    customerSearch: '',
-                    loadingCustomers: false,
-                    selectedCustomer: null,
-                    customerOrders: [],
-                    newCustomer: { name: '', phone: '', email: '', address: '', delivery_notes: '', allergen_info: '' },
+          <!-- Order mode -->
+          <div class="grid grid-cols-3 gap-1 mb-3 bg-gray-100 p-1 rounded-xl">
+            <button v-for="m in modes" :key="m.val" @click="orderMode=m.val"
+              :class="orderMode===m.val?'bg-orange-600 text-white shadow':'text-gray-600'"
+              class="py-2 rounded-lg text-xs font-bold transition text-center">
+              <i :class="m.icon" class="block text-base mb-0.5"></i>{{ m.label }}
+            </button>
+          </div>
 
-                    // Export
-                    exportOrderFrom: '',
-                    exportOrderTo: '',
-                    exportSalesDays: 365,
+          <!-- Table selector -->
+          <div v-if="orderMode==='dine-in'" class="mb-3 bg-blue-50 rounded-xl p-3">
+            <p class="text-xs font-bold text-blue-600 mb-2">Select Table</p>
+            <div class="grid grid-cols-5 gap-1 mb-2">
+              <button v-for="n in 10" :key="n" @click="tableNumber=n"
+                :class="tableNumber===n?'bg-blue-600 text-white':'bg-white text-gray-700 hover:bg-blue-100 border'"
+                class="py-2 rounded-lg text-sm font-black transition">{{ n }}</button>
+            </div>
+            <input v-model.number="covers" type="number" min="1" max="30" placeholder="Covers (people)" class="w-full border rounded-lg px-3 py-1.5 text-sm">
+          </div>
 
-                    // Master Panel
-                    masterPassword: '',
-                    showMasterPw: false,
-                    masterInfo: null,
-                    confirmWipe: false,
-                    wipeConfirmText: ''
-                };
-            },
-            
-            computed: {
-                categories() {
-                    return [...new Set(this.menu.map(item => item.category))];
-                },
-                filteredMenu() {
-                    let items = this.menu;
-                    if (this.selectedCategory) {
-                        items = items.filter(i => i.category === this.selectedCategory);
-                    }
-                    if (this.menuSearch) {
-                        items = items.filter(i => i.name.toLowerCase().includes(this.menuSearch.toLowerCase()));
-                    }
-                    return items;
-                },
-                cartSubtotal() {
-                    return this.cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
-                },
-                cartTotal() {
-                    return this.cartSubtotal + (this.orderMode === 'delivery' ? 3.5 : 0);
-                }
-            },
-            
-            methods: {
-                playBell(type = 'login') {
-                    try {
-                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                        const notes = type === 'login'
-                            ? [{ f: 880, t: 0, d: 0.3 }, { f: 1100, t: 0.15, d: 0.3 }]
-                            : [{ f: 660, t: 0, d: 0.2 }, { f: 880, t: 0.12, d: 0.2 }, { f: 1100, t: 0.24, d: 0.4 }];
-                        notes.forEach(({ f, t, d }) => {
-                            const osc = ctx.createOscillator();
-                            const gain = ctx.createGain();
-                            osc.connect(gain); gain.connect(ctx.destination);
-                            osc.type = 'sine'; osc.frequency.value = f;
-                            const s = ctx.currentTime + t;
-                            gain.gain.setValueAtTime(0.4, s);
-                            gain.gain.exponentialRampToValueAtTime(0.001, s + d);
-                            osc.start(s); osc.stop(s + d);
-                        });
-                    } catch(e) {}
-                },
+          <!-- Customer -->
+          <div class="space-y-2 mb-3">
+            <input v-model="custName" type="text" :placeholder="orderMode==='dine-in'?'Customer/guest name (optional)':'Customer name'" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <input v-if="orderMode!=='dine-in'" v-model="custPhone" type="tel" placeholder="📞 Phone number" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <input v-if="orderMode==='delivery'" v-model="custAddress" type="text" placeholder="🏠 Delivery address" class="w-full border rounded-lg px-3 py-2 text-sm">
+          </div>
 
-                async quickUpdateStatus(orderId, status) {
-                    if (!status) return;
-                    try {
-                        await fetch(`${this.apiUrl}/orders/${orderId}/status`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ status, staff_pin: this.user.pin })
-                        });
-                        await this.loadOrders();
-                        await this.loadStats();
-                        this.showToast(`Order updated to ${status}`, 'success');
-                    } catch(err) {
-                        this.showToast('Failed to update', 'error');
-                    }
-                },
+          <!-- Cart items grouped by course -->
+          <div class="flex-1 overflow-y-auto border rounded-xl p-2 mb-3 min-h-[80px]">
+            <div v-if="cart.length===0" class="text-center text-gray-400 py-6">
+              <i class="fas fa-shopping-cart text-3xl mb-1 block"></i>
+              <span class="text-sm">Tap items to add</span>
+            </div>
+            <div v-for="c in cartByCourse" :key="c.course">
+              <p class="text-xs font-black text-gray-400 uppercase mt-2 mb-1 px-1">{{ c.course }}</p>
+              <div v-for="(item,idx) in c.items" :key="item.cartIdx" class="flex items-center py-1.5 border-b last:border-0">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-semibold truncate">{{ item.name }}</p>
+                </div>
+                <div class="flex items-center gap-1 mx-2">
+                  <button @click="dec(item.cartIdx)" class="w-6 h-6 bg-gray-200 rounded-lg text-xs font-bold hover:bg-red-100 transition">−</button>
+                  <span class="w-5 text-center text-sm font-black">{{ item.qty }}</span>
+                  <button @click="inc(item.cartIdx)" class="w-6 h-6 bg-gray-200 rounded-lg text-xs font-bold hover:bg-green-100 transition">+</button>
+                </div>
+                <span class="text-sm font-bold text-orange-600 w-14 text-right">€{{ (item.price*item.qty).toFixed(2) }}</span>
+              </div>
+            </div>
+          </div>
 
-                async login() {
-                    if (!this.loginPin || this.loginPin.length !== 4) {
-                        this.loginError = 'Please enter 4-digit PIN';
-                        return;
-                    }
-                    
-                    this.loggingIn = true;
-                    this.loginError = '';
-                    
-                    try {
-                        const res = await fetch(`${this.apiUrl}/login`, {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({pin: this.loginPin})
-                        });
-                        const data = await res.json();
-                        
-                        if (data.success) {
-                            this.playBell('login');
-                            this.user = data.user;
-                            this.user.pin = this.loginPin;
-                            this.loginError = '';
-                            this.connectWebSocket();
-                            await this.loadMenu();
-                            await this.loadStats();
-                            await this.loadOrders();
-                        } else {
-                            this.loginError = data.message || 'Invalid PIN';
-                        }
-                    } catch (err) {
-                        this.loginError = 'Cannot connect to server';
-                        console.error(err);
-                    } finally {
-                        this.loggingIn = false;
-                    }
-                },
-                
-                confirmLogout() {
-                    if (confirm('Logout? Any unsaved work will be lost.')) {
-                        this.user = null;
-                        this.loginPin = '';
-                        if (this.socket) this.socket.disconnect();
-                    }
-                },
-                
-                connectWebSocket() {
-                    this.socket = io(window.location.origin);
-                    
-                    this.socket.on('connect', () => {
-                        this.connectionStatus = 'connected';
-                    });
-                    
-                    this.socket.on('disconnect', () => {
-                        this.connectionStatus = 'disconnected';
-                    });
-                    
-                    this.socket.on('new_order', (order) => {
-                        this.recentOrders.unshift(order);
-                        this.loadStats();
-                        this.playBell('order');
-                    });
-                    
-                    this.socket.on('order_updated', (order) => {
-                        const idx = this.recentOrders.findIndex(o => o.id === order.id);
-                        if (idx !== -1) {
-                            this.recentOrders.splice(idx, 1, order);
-                        }
-                        this.loadStats();
-                    });
-                },
-                
-                async loadMenu() {
-                    this.loading = true;
-                    try {
-                        const res = await fetch(`${this.apiUrl}/menu`);
-                        this.menu = await res.json();
-                    } catch (err) {
-                        this.showToast('Failed to load menu', 'error');
-                    } finally {
-                        this.loading = false;
-                    }
-                },
-                
-                async loadStats() {
-                    try {
-                        const res = await fetch(`${this.apiUrl}/dashboard/stats?role=${this.user.role}`);
-                        this.stats = await res.json();
-                    } catch (err) {
-                        console.error('Failed to load stats:', err);
-                    }
-                },
-                
-                async loadOrders() {
-                    try {
-                        const res = await fetch(`${this.apiUrl}/orders?limit=50&role=${this.user.role}`);
-                        this.recentOrders = await res.json();
-                    } catch (err) {
-                        console.error('Failed to load orders:', err);
-                    }
-                },
-                
-                addToCart(item) {
-                    const existing = this.cart.find(i => i.id === item.id);
-                    if (existing) {
-                        existing.qty++;
-                    } else {
-                        this.cart.push({...item, qty: 1});
-                    }
-                },
-                
-                increaseQty(idx) {
-                    this.cart[idx].qty++;
-                },
-                
-                decreaseQty(idx) {
-                    if (this.cart[idx].qty > 1) {
-                        this.cart[idx].qty--;
-                    } else {
-                        this.confirmRemove(idx);
-                    }
-                },
-                
-                confirmRemove(idx) {
-                    this.confirmDialog = {
-                        title: 'Remove Item?',
-                        message: `Remove ${this.cart[idx].name} from cart?`,
-                        action: () => this.cart.splice(idx, 1)
-                    };
-                },
-                
-                confirmClearCart() {
-                    if (this.cart.length === 0) return;
-                    this.confirmDialog = {
-                        title: 'Clear Cart?',
-                        message: 'Remove all items from cart? This cannot be undone.',
-                        action: () => {
-                            this.cart = [];
-                            this.customerName = 'Guest';
-                            this.customerPhone = '';
-                            this.specialInstructions = '';
-                        }
-                    };
-                },
-                
-                async completeOrder() {
-                    if (this.cart.length === 0) return;
-                    
-                    this.submittingOrder = true;
-                    
-                    const order = {
-                        items: this.cart,
-                        subtotal: this.cartSubtotal,
-                        delivery_charge: this.orderMode === 'delivery' ? 3.5 : 0,
-                        total: this.cartTotal,
-                        payment_type: this.paymentType,
-                        mode: this.orderMode,
-                        customer_name: this.customerName || 'Guest',
-                        customer_phone: this.customerPhone,
-                        special_instructions: this.specialInstructions,
-                        created_by: this.user.pin
-                    };
-                    
-                    try {
-                        const res = await fetch(`${this.apiUrl}/orders`, {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify(order)
-                        });
-                        const data = await res.json();
-                        
-                        if (data.success) {
-                            this.showToast(`Order #${data.order.order_number} created!`, 'success');
-                            this.cart = [];
-                            this.customerName = 'Guest';
-                            this.customerPhone = '';
-                            this.specialInstructions = '';
-                            this.view = 'orders';
-                        } else {
-                            this.showToast('Failed to create order', 'error');
-                        }
-                    } catch (err) {
-                        this.showToast('Network error', 'error');
-                    } finally {
-                        this.submittingOrder = false;
-                    }
-                },
-                
-                confirmDelete(order) {
-                    this.confirmDialog = {
-                        title: 'Delete Order?',
-                        message: `Delete Order #${order.order_number}? This will hide it from the system.`,
-                        requirePIN: true,
-                        action: () => this.deleteOrder(order.id)
-                    };
-                },
-                
-                async deleteOrder(orderId) {
-                    try {
-                        const res = await fetch(`${this.apiUrl}/admin/orders/${orderId}`, {
-                            method: 'DELETE',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({
-                                admin_pin: this.confirmPIN,
-                                permanent: false
-                            })
-                        });
-                        
-                        if (res.ok) {
-                            this.showToast('Order deleted', 'success');
-                            this.loadOrders();
-                        } else {
-                            this.showToast('Delete failed - check PIN', 'error');
-                        }
-                    } catch (err) {
-                        this.showToast('Network error', 'error');
-                    }
-                },
-                
-                async generateVATReport() {
-                    if (!this.vatReportFrom || !this.vatReportTo) {
-                        this.showToast('Select date range', 'error');
-                        return;
-                    }
-                    
-                    try {
-                        const res = await fetch(`${this.apiUrl}/admin/vat-report?admin_pin=${this.user.pin}&from_date=${this.vatReportFrom}&to_date=${this.vatReportTo}`);
-                        if (res.ok) {
-                            this.vatReport = await res.json();
-                            this.showToast('Report generated', 'success');
-                        } else {
-                            this.showToast('Failed to generate report', 'error');
-                        }
-                    } catch (err) {
-                        this.showToast('Network error', 'error');
-                    }
-                },
-                
-                async loadVATPeriods() {
-                    try {
-                        const res = await fetch(`${this.apiUrl}/admin/vat-periods?admin_pin=${this.user.pin}`);
-                        if (res.ok) {
-                            this.vatPeriods = await res.json();
-                            this.showToast('VAT periods loaded', 'success');
-                        }
-                    } catch (err) {
-                        this.showToast('Failed to load periods', 'error');
-                    }
-                },
-                
-                async addVATPeriod() {
-                    if (!this.newVATPeriod.start_date || !this.newVATPeriod.vat_rate) {
-                        this.showToast('Fill required fields', 'error');
-                        return;
-                    }
-                    
-                    try {
-                        const res = await fetch(`${this.apiUrl}/admin/vat-periods`, {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({
-                                ...this.newVATPeriod,
-                                admin_pin: this.user.pin
-                            })
-                        });
-                        
-                        if (res.ok) {
-                            this.showToast('VAT period added', 'success');
-                            this.newVATPeriod = {start_date: '', end_date: '', vat_rate: '', description: ''};
-                            this.loadVATPeriods();
-                        }
-                    } catch (err) {
-                        this.showToast('Failed to add period', 'error');
-                    }
-                },
-                
-                cancelConfirm() {
-                    this.confirmDialog = null;
-                    this.confirmPIN = '';
-                },
-                
-                proceedConfirm() {
-                    if (this.confirmDialog.action) {
-                        this.confirmDialog.action();
-                    }
-                    this.confirmDialog = null;
-                    this.confirmPIN = '';
-                },
-                
+          <!-- Totals -->
+          <div class="bg-gray-50 rounded-xl p-3 mb-3">
+            <div class="flex justify-between text-sm mb-1">
+              <span class="text-gray-500">Subtotal</span>
+              <span class="font-semibold">€{{ cartSubtotal.toFixed(2) }}</span>
+            </div>
+            <div v-if="orderMode==='delivery'" class="flex justify-between text-sm mb-1">
+              <span class="text-gray-500">Delivery charge</span>
+              <span>€3.50</span>
+            </div>
+            <div class="flex justify-between font-black text-lg text-orange-600 pt-2 border-t border-gray-200">
+              <span>TOTAL</span>
+              <span>€{{ cartTotal.toFixed(2) }}</span>
+            </div>
+          </div>
 
-                async loadDailySales() {
-                    this.loadingSales = true;
-                    try {
-                        const res = await fetch(`${this.apiUrl}/reports/daily-sales?days=${this.salesDays}`);
-                        this.dailySales = await res.json();
-                    } catch(err) {
-                        this.showToast('Failed to load sales', 'error');
-                    } finally {
-                        this.loadingSales = false;
-                    }
-                },
+          <!-- Payment type -->
+          <div class="grid grid-cols-2 gap-2 mb-3">
+            <button @click="paymentType='cash'"
+              :class="paymentType==='cash'?'bg-yellow-500 text-white shadow-lg scale-105':'bg-gray-100 text-gray-600 hover:bg-yellow-50 border'"
+              class="py-2.5 rounded-xl text-sm font-black transition-all">
+              💵 Cash
+            </button>
+            <button @click="paymentType='card'"
+              :class="paymentType==='card'?'bg-blue-500 text-white shadow-lg scale-105':'bg-gray-100 text-gray-600 hover:bg-blue-50 border'"
+              class="py-2.5 rounded-xl text-sm font-black transition-all">
+              💳 Card
+            </button>
+          </div>
 
-                async loadCustomers() {
-                    this.loadingCustomers = true;
-                    try {
-                        const q = this.customerSearch ? `?search=${encodeURIComponent(this.customerSearch)}` : '';
-                        const res = await fetch(`${this.apiUrl}/customers${q}`);
-                        this.customers = await res.json();
-                    } catch(err) {
-                        this.showToast('Failed to load customers', 'error');
-                    } finally {
-                        this.loadingCustomers = false;
-                    }
-                },
+          <textarea v-model="notes" placeholder="📝 Notes / special instructions / allergies..." rows="2"
+            class="w-full border rounded-xl px-3 py-2 text-sm mb-3 resize-none"></textarea>
 
-                async loadCustomerOrders(customerId) {
-                    try {
-                        const res = await fetch(`${this.apiUrl}/customers/${customerId}/orders`);
-                        this.customerOrders = await res.json();
-                    } catch(err) {
-                        this.customerOrders = [];
-                    }
-                },
+          <button @click="submitOrder" :disabled="cart.length===0||submitting"
+            class="w-full bg-green-600 text-white py-4 rounded-xl font-black text-xl hover:bg-green-700 disabled:bg-gray-300 transition-all active:scale-98 shadow-lg">
+            <i class="fas fa-paper-plane mr-2"></i>{{ submitting?'Sending...':'Place Order' }}
+          </button>
+          <button @click="cart=[]" class="w-full mt-2 text-gray-400 py-2 text-sm hover:text-red-500 transition">
+            <i class="fas fa-trash mr-1"></i>Clear cart
+          </button>
+        </div>
+      </div>
+    </div>
 
-                async saveCustomer() {
-                    if (!this.newCustomer.name) {
-                        this.showToast('Name is required', 'error');
-                        return;
-                    }
-                    try {
-                        const res = await fetch(`${this.apiUrl}/customers`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.newCustomer)
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                            this.showToast(data.updated ? 'Customer updated!' : 'Customer saved!', 'success');
-                            this.newCustomer = { name: '', phone: '', email: '', address: '', delivery_notes: '', allergen_info: '' };
-                            this.loadCustomers();
-                        }
-                    } catch(err) {
-                        this.showToast('Failed to save customer', 'error');
-                    }
-                },
+    <!-- ========== TABLES ========== -->
+    <div v-if="activeTab==='tables'" class="slide-in">
+      <div class="flex justify-between items-center mb-4">
+        <div>
+          <h2 class="text-2xl font-black">🍽️ Floor Plan</h2>
+          <p class="text-sm text-gray-500">{{ occupiedTables }} of 10 tables occupied</p>
+        </div>
+        <button @click="loadTables" class="text-orange-600 hover:text-orange-800"><i class="fas fa-sync mr-1"></i>Refresh</button>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        <div v-for="t in tables" :key="t.id"
+          @click="selectedTable=t"
+          :class="t.status==='available'?'table-available':t.status==='occupied'?'table-occupied':'table-reserved'"
+          class="border-2 rounded-2xl p-4 cursor-pointer hover:shadow-xl transition-all text-center">
+          <div class="text-4xl font-black mb-1">{{ t.number }}</div>
+          <div class="text-xs font-bold uppercase tracking-wide mb-2"
+            :class="t.status==='available'?'text-green-600':t.status==='occupied'?'text-red-600':'text-yellow-600'">
+            {{ t.status }}
+          </div>
+          <div v-if="t.active_order" class="bg-white rounded-xl p-2 text-left shadow-inner">
+            <p class="text-xs font-black text-gray-700">#{{ t.active_order.order_number }}</p>
+            <p class="text-xs text-gray-500">{{ t.active_order.covers }} covers</p>
+            <p class="text-sm font-black text-orange-600">€{{ (t.active_order.total||0).toFixed(2) }}</p>
+            <span :class="statusClass(t.active_order.status)" class="text-xs px-2 py-0.5 rounded-full font-bold">{{ t.active_order.status }}</span>
+          </div>
+          <div v-else class="text-xs text-gray-400">{{ t.capacity }} seats · Available</div>
+        </div>
+      </div>
+      <!-- Table modal -->
+      <div v-if="selectedTable" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="selectedTable=null">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm slide-in">
+          <h3 class="text-2xl font-black mb-1">Table {{ selectedTable.number }}</h3>
+          <p class="text-gray-400 text-sm mb-4 capitalize">{{ selectedTable.status }}</p>
+          <div v-if="selectedTable.active_order">
+            <div class="bg-gray-50 rounded-xl p-4 mb-4">
+              <p class="font-bold text-lg">#{{ selectedTable.active_order.order_number }}</p>
+              <p class="text-gray-500">{{ selectedTable.active_order.covers }} covers</p>
+              <p class="text-2xl font-black text-orange-600 mt-1">€{{ (selectedTable.active_order.total||0).toFixed(2) }}</p>
+              <span :class="statusClass(selectedTable.active_order.status)" class="text-sm px-3 py-1 rounded-full font-bold mt-2 inline-block">
+                {{ selectedTable.active_order.status.toUpperCase() }}
+              </span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <button @click="openTableOrder(selectedTable)" class="bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 transition">
+                <i class="fas fa-plus mr-1"></i>Add Items
+              </button>
+              <button @click="closeTable(selectedTable)" class="bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition">
+                <i class="fas fa-receipt mr-1"></i>Pay & Close
+              </button>
+            </div>
+          </div>
+          <div v-else>
+            <p class="text-gray-500 mb-4">Table is free. Open for dine-in?</p>
+            <button @click="openNewTableOrder(selectedTable)" class="w-full bg-orange-600 text-white py-3 rounded-xl font-bold hover:bg-orange-700 transition">
+              <i class="fas fa-utensils mr-2"></i>Open Table {{ selectedTable.number }}
+            </button>
+          </div>
+          <button @click="selectedTable=null" class="w-full mt-3 bg-gray-100 text-gray-600 py-2.5 rounded-xl hover:bg-gray-200 transition font-semibold">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
 
-                prefillCustomer(customer) {
-                    this.customerName = customer.name;
-                    this.customerPhone = customer.phone;
-                    this.view = 'pos';
-                    this.showToast(`Starting order for ${customer.name}`, 'success');
-                },
+    <!-- ========== ORDERS ========== -->
+    <div v-if="activeTab==='orders'" class="slide-in bg-white rounded-xl shadow p-4">
+      <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+        <h2 class="text-xl font-black">All Orders</h2>
+        <div class="flex gap-2">
+          <select v-model="orderFilter" class="border rounded-lg px-3 py-1.5 text-sm">
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="cooking">Cooking</option>
+            <option value="ready">Ready</option>
+            <option value="completed">Completed</option>
+          </select>
+          <button @click="loadOrders" class="text-orange-600 px-3 py-1.5 border rounded-lg text-sm hover:bg-orange-50"><i class="fas fa-sync"></i></button>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-gray-400 text-xs uppercase">
+            <tr>
+              <th class="px-3 py-2 text-left">#</th>
+              <th class="px-3 py-2 text-left">Time</th>
+              <th class="px-3 py-2 text-left">Customer</th>
+              <th class="px-3 py-2 text-left">Type</th>
+              <th class="px-3 py-2 text-right">Total</th>
+              <th class="px-3 py-2 text-left">Payment</th>
+              <th class="px-3 py-2 text-left">Status</th>
+              <th v-if="user.role==='admin'" class="px-3 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="o in filteredOrders" :key="o.id" class="border-t hover:bg-orange-50 transition">
+              <td class="px-3 py-3 font-black text-orange-600">#{{ o.order_number }}</td>
+              <td class="px-3 py-3 text-gray-400 text-xs">{{ fmtTime(o.timestamp) }}</td>
+              <td class="px-3 py-3 font-medium">{{ o.customer_name }}</td>
+              <td class="px-3 py-3">
+                <span v-if="o.table_number" class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs font-bold">🍽️ Table {{ o.table_number }}</span>
+                <span v-else-if="o.mode==='delivery'" class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-bold">🛵 Delivery</span>
+                <span v-else class="bg-green-100 text-green-700 px-2 py-0.5 rounded-full text-xs font-bold">🛍️ Takeaway</span>
+              </td>
+              <td class="px-3 py-3 text-right font-black">€{{ (o.total||0).toFixed(2) }}</td>
+              <td class="px-3 py-3 text-xs capitalize text-gray-500">{{ o.payment_type }}</td>
+              <td class="px-3 py-3"><span :class="statusClass(o.status)" class="px-2 py-0.5 rounded-full text-xs font-bold">{{ o.status.toUpperCase() }}</span></td>
+              <td v-if="user.role==='admin'" class="px-3 py-3">
+                <button @click="promptDelete(o)" class="text-red-400 hover:text-red-600 transition"><i class="fas fa-trash text-xs"></i></button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
-                formatDate(dateStr) {
-                    if (!dateStr) return '';
-                    return new Date(dateStr).toLocaleDateString('en-IE', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
-                },
+    <!-- ========== SALES ========== -->
+    <div v-if="activeTab==='sales'" class="slide-in space-y-4">
+      <div class="flex justify-between items-center flex-wrap gap-2">
+        <h2 class="text-xl font-black">📊 Sales Report</h2>
+        <div class="flex gap-2">
+          <select v-model="salesDays" @change="loadSales" class="border rounded-lg px-3 py-1.5 text-sm">
+            <option value="7">Last 7 days</option>
+            <option value="14">Last 14 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+          <button @click="dlCSV('sales')" class="bg-green-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-green-700">
+            <i class="fas fa-download mr-1"></i>Export
+          </button>
+        </div>
+      </div>
+      <div v-if="dailySales.length>0" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-xl shadow p-4 text-center">
+          <p class="text-xs text-gray-400 mb-1">Total Revenue</p>
+          <p class="text-2xl font-black text-green-600">€{{ dailySales.reduce((s,d)=>s+(d.revenue||0),0).toFixed(2) }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-4 text-center">
+          <p class="text-xs text-gray-400 mb-1">Total Orders</p>
+          <p class="text-2xl font-black text-blue-600">{{ dailySales.reduce((s,d)=>s+(d.total_orders||0),0) }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-4 text-center">
+          <p class="text-xs text-gray-400 mb-1">Total VAT</p>
+          <p class="text-2xl font-black text-orange-600">€{{ dailySales.reduce((s,d)=>s+(d.vat||0),0).toFixed(2) }}</p>
+        </div>
+        <div class="bg-white rounded-xl shadow p-4 text-center">
+          <p class="text-xs text-gray-400 mb-1">Daily Average</p>
+          <p class="text-2xl font-black text-purple-600">€{{ (dailySales.reduce((s,d)=>s+(d.revenue||0),0)/(dailySales.length||1)).toFixed(2) }}</p>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-400 text-xs uppercase">
+              <tr>
+                <th class="px-3 py-2 text-left">Date</th>
+                <th class="px-3 py-2 text-right">Orders</th>
+                <th class="px-3 py-2 text-right">Revenue</th>
+                <th class="px-3 py-2 text-right">VAT</th>
+                <th class="px-3 py-2 text-right">Net</th>
+                <th class="px-3 py-2 text-center">Dine-in</th>
+                <th class="px-3 py-2 text-center">Takeaway</th>
+                <th class="px-3 py-2 text-center">Cash</th>
+                <th class="px-3 py-2 text-center">Card</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="d in dailySales" :key="d.date" class="border-t hover:bg-gray-50">
+                <td class="px-3 py-2.5 font-semibold">{{ fmtDate(d.date) }}</td>
+                <td class="px-3 py-2.5 text-right font-bold text-blue-600">{{ d.total_orders }}</td>
+                <td class="px-3 py-2.5 text-right font-bold text-green-600">€{{ (d.revenue||0).toFixed(2) }}</td>
+                <td class="px-3 py-2.5 text-right text-orange-500">€{{ (d.vat||0).toFixed(2) }}</td>
+                <td class="px-3 py-2.5 text-right text-gray-500">€{{ (d.net||0).toFixed(2) }}</td>
+                <td class="px-3 py-2.5 text-center"><span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold">{{ d.delivery_count||0 }}</span></td>
+                <td class="px-3 py-2.5 text-center"><span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold">{{ d.collection_count||0 }}</span></td>
+                <td class="px-3 py-2.5 text-center"><span class="bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded text-xs font-bold">{{ d.cash_count||0 }}</span></td>
+                <td class="px-3 py-2.5 text-center"><span class="bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs font-bold">{{ d.card_count||0 }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
+    <!-- ========== CUSTOMERS ========== -->
+    <div v-if="activeTab==='customers'" class="slide-in space-y-4">
+      <div class="flex justify-between items-center flex-wrap gap-2">
+        <h2 class="text-xl font-black">👥 Customers ({{ customers.length }})</h2>
+        <button @click="dlCSV('customers')" class="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-orange-700">
+          <i class="fas fa-download mr-1"></i>Export CSV
+        </button>
+      </div>
+      <div class="flex gap-2">
+        <input v-model="custSearch" @input="loadCustomers" type="text" placeholder="Search by name or phone..." class="flex-1 border rounded-xl px-4 py-2 text-sm">
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div v-for="c in customers" :key="c.id" class="bg-white rounded-xl shadow p-4 hover:shadow-lg transition border border-transparent hover:border-orange-200">
+          <div class="flex justify-between items-start">
+            <div class="flex-1 min-w-0 mr-3">
+              <p class="font-black text-gray-800">{{ c.name }}</p>
+              <p v-if="c.phone" class="text-sm text-gray-500 mt-0.5">📞 {{ c.phone }}</p>
+              <p v-if="c.address" class="text-sm text-gray-500 truncate">📍 {{ c.address }}</p>
+              <p v-if="c.allergen_info" class="text-xs text-red-500 mt-1 bg-red-50 px-2 py-1 rounded-lg">⚠️ {{ c.allergen_info }}</p>
+              <p v-if="c.delivery_notes" class="text-xs text-blue-500 mt-1">📝 {{ c.delivery_notes }}</p>
+            </div>
+            <div class="text-right flex-shrink-0">
+              <div class="bg-orange-100 text-orange-700 px-2 py-1 rounded-lg text-xs font-black mb-1">{{ c.total_orders }} orders</div>
+              <div class="bg-green-100 text-green-700 px-2 py-1 rounded-lg text-xs font-black">€{{ (c.total_spent||0).toFixed(2) }}</div>
+            </div>
+          </div>
+          <button @click="startOrderForCustomer(c)" class="mt-3 w-full bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white py-1.5 rounded-lg text-xs font-bold transition border border-orange-200">
+            <i class="fas fa-cart-plus mr-1"></i>New Order
+          </button>
+        </div>
+        <div v-if="customers.length===0" class="col-span-3 text-center py-12 text-gray-400 bg-white rounded-xl">
+          <i class="fas fa-users text-4xl mb-2 block"></i>
+          No customers yet. They appear automatically when orders are placed.
+        </div>
+      </div>
+    </div>
 
-                async loadMasterInfo() {
-                    if (!this.masterPassword) { this.showToast('Enter master password', 'error'); return; }
-                    try {
-                        const res = await fetch(`${this.apiUrl}/master/info?password=${encodeURIComponent(this.masterPassword)}`);
-                        const data = await res.json();
-                        if (data.error) { this.showToast(data.error, 'error'); return; }
-                        this.masterInfo = data;
-                    } catch(err) { this.showToast('Failed to load info', 'error'); }
-                },
+    <!-- ========== ADMIN ========== -->
+    <div v-if="activeTab==='admin'" class="slide-in space-y-4">
+      <h2 class="text-xl font-black">⚙️ Admin Panel</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-                async exportData() {
-                    if (!this.masterPassword) { this.showToast('Enter master password', 'error'); return; }
-                    const url = `${this.apiUrl}/master/export?password=${encodeURIComponent(this.masterPassword)}`;
-                    try {
-                        const res = await fetch(url);
-                        if (!res.ok) { this.showToast('Invalid master password', 'error'); return; }
-                        const blob = await res.blob();
-                        const a = document.createElement('a');
-                        a.href = URL.createObjectURL(blob);
-                        a.download = 'raha-pos-export-' + new Date().toISOString().split('T')[0] + '.json';
-                        a.click();
-                        this.showToast('Export downloaded!', 'success');
-                    } catch(err) { this.showToast('Export failed', 'error'); }
-                },
+        <!-- VAT Report -->
+        <div class="bg-white rounded-xl shadow p-4">
+          <h3 class="font-bold text-lg mb-3 flex items-center gap-2"><i class="fas fa-percent text-purple-600"></i>VAT Report</h3>
+          <div class="space-y-2 mb-3">
+            <div><label class="text-xs text-gray-500 block mb-1">From</label><input v-model="vatFrom" type="date" class="w-full border rounded-lg px-3 py-2 text-sm"></div>
+            <div><label class="text-xs text-gray-500 block mb-1">To</label><input v-model="vatTo" type="date" class="w-full border rounded-lg px-3 py-2 text-sm"></div>
+            <button @click="loadVATReport" class="w-full bg-purple-600 text-white py-2.5 rounded-lg font-bold hover:bg-purple-700 transition">
+              <i class="fas fa-file-alt mr-2"></i>Generate Report
+            </button>
+          </div>
+          <div v-if="vatReport" class="bg-purple-50 rounded-xl p-4 space-y-1 text-sm">
+            <div class="flex justify-between"><span class="text-gray-500">Orders</span><span class="font-bold">{{ vatReport.total_orders }}</span></div>
+            <div class="flex justify-between"><span class="text-gray-500">Revenue</span><span class="font-bold text-green-600">€{{ (vatReport.total_revenue||0).toFixed(2) }}</span></div>
+            <div class="flex justify-between"><span class="text-gray-500">VAT</span><span class="font-bold text-orange-600">€{{ (vatReport.total_vat||0).toFixed(2) }}</span></div>
+            <div class="flex justify-between border-t pt-1"><span class="text-gray-500">Net</span><span class="font-black text-gray-800">€{{ (vatReport.total_net||0).toFixed(2) }}</span></div>
+          </div>
+        </div>
 
-                async executeWipe() {
-                    if (this.wipeConfirmText !== 'WIPE EVERYTHING') return;
-                    if (!this.masterPassword) { this.showToast('Enter master password', 'error'); return; }
-                    try {
-                        const res = await fetch(`${this.apiUrl}/master/wipe`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ password: this.masterPassword, confirm: 'WIPE EVERYTHING' })
-                        });
-                        const data = await res.json();
-                        if (data.success) {
-                            this.showToast('All data permanently wiped', 'success');
-                            this.confirmWipe = false;
-                            this.wipeConfirmText = '';
-                            this.masterInfo = null;
-                            await this.loadOrders();
-                            await this.loadStats();
-                        } else {
-                            this.showToast(data.error || 'Wipe failed', 'error');
-                        }
-                    } catch(err) { this.showToast('Wipe failed', 'error'); }
-                },
+        <!-- Add Menu Item -->
+        <div class="bg-white rounded-xl shadow p-4">
+          <h3 class="font-bold text-lg mb-3 flex items-center gap-2"><i class="fas fa-utensils text-orange-600"></i>Add Menu Item</h3>
+          <div class="space-y-2">
+            <input v-model="newItem.name" placeholder="Item name *" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="text-xs text-gray-500 block mb-1">Price €*</label>
+                <input v-model.number="newItem.price" type="number" step="0.05" placeholder="0.00" class="w-full border rounded-lg px-3 py-2 text-sm">
+              </div>
+              <div>
+                <label class="text-xs text-gray-500 block mb-1">VAT % (blank = default)</label>
+                <input v-model="newItem.vat_rate" type="number" step="0.1" placeholder="13.5" class="w-full border rounded-lg px-3 py-2 text-sm">
+              </div>
+            </div>
+            <select v-model="newItem.course" class="w-full border rounded-lg px-3 py-2 text-sm">
+              <option value="starters">🥗 Starters</option>
+              <option value="mains">🍛 Mains</option>
+              <option value="desserts">🍮 Desserts</option>
+              <option value="drinks">🥤 Drinks</option>
+            </select>
+            <input v-model="newItem.allergens" placeholder="Allergens (e.g. Dairy, Gluten, Nuts)" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <button @click="addMenuItem" class="w-full bg-orange-600 text-white py-2.5 rounded-lg font-bold hover:bg-orange-700 transition">
+              <i class="fas fa-plus mr-2"></i>Add to Menu
+            </button>
+          </div>
+        </div>
 
+        <!-- Export -->
+        <div class="bg-white rounded-xl shadow p-4">
+          <h3 class="font-bold text-lg mb-3 flex items-center gap-2"><i class="fas fa-download text-blue-600"></i>Export Data</h3>
+          <div class="space-y-2">
+            <button @click="dlCSV('orders')" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-bold hover:bg-blue-700 transition flex items-center justify-center gap-2">
+              <i class="fas fa-receipt"></i>All Orders CSV
+            </button>
+            <button @click="dlCSV('customers')" class="w-full bg-orange-600 text-white py-2.5 rounded-lg font-bold hover:bg-orange-700 transition flex items-center justify-center gap-2">
+              <i class="fas fa-users"></i>Customers CSV
+            </button>
+            <button @click="dlCSV('sales')" class="w-full bg-green-600 text-white py-2.5 rounded-lg font-bold hover:bg-green-700 transition flex items-center justify-center gap-2">
+              <i class="fas fa-chart-bar"></i>Daily Sales CSV
+            </button>
+          </div>
+        </div>
 
-                async loadDbInfo() {
-                    try {
-                        const res = await fetch(`${this.apiUrl}/master/info?password=${encodeURIComponent(this.masterPassword)}`);
-                        const data = await res.json();
-                        if (res.ok) {
-                            this.dbInfo = data;
-                            this.showToast('Database info loaded', 'success');
-                        } else {
-                            this.showToast(data.error || 'Wrong master password', 'error');
-                        }
-                    } catch(err) {
-                        this.showToast('Failed to connect', 'error');
-                    }
-                },
+        <!-- Security -->
+        <div class="bg-white rounded-xl shadow p-4">
+          <h3 class="font-bold text-lg mb-3 flex items-center gap-2"><i class="fas fa-shield-alt text-red-600"></i>Security</h3>
+          <div class="space-y-3 text-sm text-gray-600">
+            <div class="bg-red-50 rounded-lg p-3 border border-red-100">
+              <p class="font-bold text-red-700 mb-1">Delete Password</p>
+              <p>To delete any order, a special delete password is required. Set it in Railway Variables as <code class="bg-red-100 px-1 rounded">DELETE_PASSWORD</code>.</p>
+            </div>
+            <div class="bg-blue-50 rounded-lg p-3 border border-blue-100">
+              <p class="font-bold text-blue-700 mb-1">Rate Limiting</p>
+              <p>Login is limited to 10 attempts per 15 minutes per IP to prevent PIN brute force.</p>
+            </div>
+            <div class="bg-green-50 rounded-lg p-3 border border-green-100">
+              <p class="font-bold text-green-700 mb-1">Database</p>
+              <p>Stored on Railway Volume at <code class="bg-green-100 px-1 rounded">/app/data/raha_pos.db</code> — persists forever.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-                exportData() {
-                    if (!this.masterPassword) return;
-                    const url = `${this.apiUrl}/master/export?password=${encodeURIComponent(this.masterPassword)}`;
-                    window.open(url, '_blank');
-                    this.showToast('Download started', 'success');
-                },
+  </div>
+</div>
 
-                async wipeData() {
-                    if (!this.masterPassword || this.wipeConfirm !== 'WIPE EVERYTHING') return;
-                    if (!confirm('FINAL WARNING: This will permanently delete ALL data. Are you absolutely sure?')) return;
-                    try {
-                        const res = await fetch(`${this.apiUrl}/master/wipe`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ password: this.masterPassword, confirm: 'WIPE EVERYTHING' })
-                        });
-                        const data = await res.json();
-                        if (res.ok) {
-                            this.wipeConfirm = '';
-                            this.masterPassword = '';
-                            this.dbInfo = null;
-                            this.showToast('All data permanently deleted', 'success');
-                            await this.loadOrders();
-                            await this.loadStats();
-                        } else {
-                            this.showToast(data.error || 'Wipe failed', 'error');
-                        }
-                    } catch(err) {
-                        this.showToast('Failed to wipe', 'error');
-                    }
-                },
+<!-- DELETE MODAL -->
+<div v-if="deleteDialog" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+  <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm slide-in">
+    <h3 class="text-xl font-black text-red-600 mb-2"><i class="fas fa-trash mr-2"></i>Delete Order</h3>
+    <p class="text-gray-500 mb-4 text-sm">Delete Order <strong>#{{ deleteDialog.order_number }}</strong>? This requires the admin delete password.</p>
+    <input v-model="deletePassword" type="password" placeholder="Enter delete password" class="w-full border-2 rounded-xl px-4 py-3 mb-4 focus:border-red-500 focus:outline-none">
+    <div class="grid grid-cols-2 gap-3">
+      <button @click="deleteDialog=null;deletePassword=''" class="bg-gray-100 text-gray-700 py-2.5 rounded-xl font-bold hover:bg-gray-200">Cancel</button>
+      <button @click="confirmDelete" class="bg-red-600 text-white py-2.5 rounded-xl font-bold hover:bg-red-700">Delete</button>
+    </div>
+  </div>
+</div>
 
+<!-- TOAST -->
+<div v-if="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 slide-in">
+  <div :class="toast.type==='success'?'bg-gray-900':'bg-red-600'" class="text-white px-6 py-3 rounded-2xl shadow-2xl font-semibold text-sm whitespace-nowrap">
+    {{ toast.msg }}
+  </div>
+</div>
 
-                exportOrders() {
-                    let url = `${this.apiUrl}/export/orders?`;
-                    if (this.exportOrderFrom) url += `from_date=${this.exportOrderFrom}&`;
-                    if (this.exportOrderTo)   url += `to_date=${this.exportOrderTo}&`;
-                    window.open(url, '_blank');
-                    this.showToast('Downloading orders CSV...', 'success');
-                },
-
-                exportCustomers() {
-                    window.open(`${this.apiUrl}/export/customers`, '_blank');
-                    this.showToast('Downloading customers CSV...', 'success');
-                },
-
-                exportSales() {
-                    window.open(`${this.apiUrl}/export/sales?days=${this.exportSalesDays}`, '_blank');
-                    this.showToast('Downloading sales CSV...', 'success');
-                },
-
-                showToast(message, type = 'success') {
-                    this.toast = {message, type};
-                    setTimeout(() => this.toast = null, 3000);
-                },
-                
-                formatTime(timestamp) {
-                    return new Date(timestamp).toLocaleTimeString();
-                },
-                
-                getStatusClass(status) {
-                    const classes = {
-                        'pending': 'bg-yellow-100 text-yellow-800',
-                        'cooking': 'bg-blue-100 text-blue-800',
-                        'ready': 'bg-green-100 text-green-800',
-                        'completed': 'bg-gray-100 text-gray-800'
-                    };
-                    return classes[status] || 'bg-gray-100 text-gray-800';
-                },
-                
-                updateTime() {
-                    const now = new Date();
-                    this.currentTime = now.toLocaleTimeString();
-                    this.currentDate = now.toLocaleDateString();
-                }
-            },
-            
-            mounted() {
-                this.updateTime();
-                setInterval(this.updateTime, 1000);
-                
-                // Auto-refresh orders and stats every 10 seconds
-                setInterval(() => {
-                    if (this.user) {
-                        this.loadOrders();
-                        this.loadStats();
-                    }
-                }, 10000);
-
-                // Try to connect
-                fetch(`${this.apiUrl}/health`)
-                    .then(() => this.connectionStatus = 'connected')
-                    .catch(() => this.connectionStatus = 'disconnected');
-            }
-        }).mount('#app');
-    </script>
+</div>
+<script>
+const{createApp}=Vue;
+createApp({
+  data(){return{
+    apiUrl:window.location.origin+'/api',socket:null,conn:'disconnected',
+    user:null,loginPin:'',loginError:'',loggingIn:false,
+    activeTab:'dashboard',currentTime:'',
+    menu:[],menuSearch:'',activeCourse:'all',
+    courses:[
+      {key:'all',label:'All',icon:'🍽️'},
+      {key:'starters',label:'Starters',icon:'🥗'},
+      {key:'mains',label:'Mains',icon:'🍛'},
+      {key:'desserts',label:'Desserts',icon:'🍮'},
+      {key:'drinks',label:'Drinks',icon:'🥤'},
+    ],
+    modes:[
+      {val:'dine-in',label:'Dine In',icon:'fas fa-utensils'},
+      {val:'collection',label:'Takeaway',icon:'fas fa-shopping-bag'},
+      {val:'delivery',label:'Delivery',icon:'fas fa-motorcycle'},
+    ],
+    cart:[],orderMode:'collection',paymentType:'cash',
+    custName:'',custPhone:'',custAddress:'',notes:'',
+    tableNumber:null,covers:2,submitting:false,
+    orders:[],orderFilter:'',
+    tables:[],selectedTable:null,
+    stats:{},
+    dailySales:[],salesDays:30,
+    customers:[],custSearch:'',
+    vatFrom:'',vatTo:'',vatReport:null,
+    newItem:{name:'',price:'',vat_rate:'',course:'mains',allergens:''},
+    deleteDialog:null,deletePassword:'',
+    toast:null,
+  }},
+  computed:{
+    availableTabs(){
+      const all=[
+        {key:'dashboard',label:'Dashboard',icon:'fas fa-home',badge:0},
+        {key:'pos',label:'New Order',icon:'fas fa-cash-register',badge:0},
+        {key:'tables',label:'Tables',icon:'fas fa-table',badge:0},
+        {key:'orders',label:'Orders',icon:'fas fa-list',badge:this.pendingCount},
+        {key:'sales',label:'Sales',icon:'fas fa-chart-bar',badge:0},
+        {key:'customers',label:'Customers',icon:'fas fa-users',badge:0},
+        {key:'admin',label:'Admin',icon:'fas fa-cog',badge:0},
+      ];
+      if(!this.user)return[];
+      const role=this.user.role;
+      if(role==='chef')return[all[0],all[2],all[3]];
+      if(role==='front')return all.slice(0,5);
+      if(role==='manager')return all.slice(0,6);
+      return all;
+    },
+    filteredMenu(){
+      let items=this.menu;
+      if(this.activeCourse!=='all')items=items.filter(i=>i.course===this.activeCourse);
+      if(this.menuSearch)items=items.filter(i=>i.name.toLowerCase().includes(this.menuSearch.toLowerCase()));
+      return items;
+    },
+    filteredOrders(){
+      if(!this.orderFilter)return this.orders;
+      return this.orders.filter(o=>o.status===this.orderFilter);
+    },
+    cartSubtotal(){return this.cart.reduce((s,i)=>s+i.price*i.qty,0)},
+    cartTotal(){return this.cartSubtotal+(this.orderMode==='delivery'?3.5:0)},
+    pendingCount(){return this.orders.filter(o=>o.status==='pending').length},
+    occupiedTables(){return this.tables.filter(t=>t.status==='occupied').length},
+    cartByCourse(){
+      const groups={starters:[],mains:[],desserts:[],drinks:[]};
+      this.cart.forEach((item,idx)=>{
+        const course=item.course||'mains';
+        if(groups[course])groups[course].push({...item,cartIdx:idx});
+        else groups.mains.push({...item,cartIdx:idx});
+      });
+      return Object.entries(groups).filter(([,items])=>items.length>0).map(([course,items])=>({course,items}));
+    },
+  },
+  methods:{
+    playBell(type='login'){
+      try{
+        const ctx=new(window.AudioContext||window.webkitAudioContext)();
+        const notes=type==='login'?[{f:880,t:0,d:.3},{f:1100,t:.15,d:.3}]:[{f:660,t:0,d:.2},{f:880,t:.12,d:.2},{f:1100,t:.24,d:.4}];
+        notes.forEach(({f,t,d})=>{
+          const o=ctx.createOscillator(),g=ctx.createGain();
+          o.connect(g);g.connect(ctx.destination);
+          o.type='sine';o.frequency.value=f;
+          const s=ctx.currentTime+t;
+          g.gain.setValueAtTime(.4,s);g.gain.exponentialRampToValueAtTime(.001,s+d);
+          o.start(s);o.stop(s+d);
+        });
+      }catch(e){}
+    },
+    showToast(msg,type='success'){this.toast={msg,type};setTimeout(()=>this.toast=null,3000)},
+    statusClass(s){return{pending:'bg-yellow-100 text-yellow-800',cooking:'bg-blue-100 text-blue-800',ready:'bg-green-100 text-green-800',completed:'bg-gray-100 text-gray-700',cancelled:'bg-red-100 text-red-700'}[s]||'bg-gray-100 text-gray-700'},
+    fmtTime(ts){return ts?new Date(ts).toLocaleTimeString('en-IE',{hour:'2-digit',minute:'2-digit'}):''},
+    fmtDate(d){return d?new Date(d).toLocaleDateString('en-IE',{weekday:'short',day:'numeric',month:'short'}):''},
+    async login(){
+      if(!this.loginPin||this.loginPin.length!==4){this.loginError='Enter 4-digit PIN';return}
+      this.loggingIn=true;this.loginError='';
+      try{
+        const r=await fetch(`${this.apiUrl}/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:this.loginPin})});
+        const d=await r.json();
+        if(d.success){
+          this.playBell('login');
+          this.user={...d.user,pin:this.loginPin};
+          this.connectSocket();
+          await Promise.all([this.loadMenu(),this.loadStats(),this.loadOrders(),this.loadTables()]);
+        }else{this.loginError=d.message||'Invalid PIN'}
+      }catch(e){this.loginError='Cannot connect to server'}
+      finally{this.loggingIn=false}
+    },
+    logout(){if(confirm('Logout?')){this.user=null;this.loginPin='';if(this.socket)this.socket.disconnect()}},
+    connectSocket(){
+      this.socket=io(window.location.origin);
+      this.socket.on('connect',()=>this.conn='connected');
+      this.socket.on('disconnect',()=>this.conn='disconnected');
+      this.socket.on('new_order',(o)=>{
+        this.orders.unshift(o);this.loadStats();this.loadTables();this.playBell('order');
+      });
+      this.socket.on('order_updated',(o)=>{
+        const idx=this.orders.findIndex(x=>x.id===o.id);
+        if(idx!==-1)this.orders.splice(idx,1,o);else this.orders.unshift(o);
+        this.loadStats();this.loadTables();
+      });
+    },
+    switchTab(key){
+      this.activeTab=key;
+      if(key==='sales')this.loadSales();
+      if(key==='customers')this.loadCustomers();
+      if(key==='tables')this.loadTables();
+      if(key==='orders')this.loadOrders();
+    },
+    async loadMenu(){try{const r=await fetch(`${this.apiUrl}/menu`);this.menu=await r.json()}catch(e){}},
+    async loadStats(){try{const r=await fetch(`${this.apiUrl}/dashboard/stats?role=${this.user.role}`);this.stats=await r.json()}catch(e){}},
+    async loadOrders(){try{const r=await fetch(`${this.apiUrl}/orders?limit=100&role=${this.user.role}`);this.orders=await r.json()}catch(e){}},
+    async loadTables(){try{const r=await fetch(`${this.apiUrl}/tables`);this.tables=await r.json()}catch(e){}},
+    async loadSales(){try{const r=await fetch(`${this.apiUrl}/reports/daily-sales?days=${this.salesDays}`);this.dailySales=await r.json()}catch(e){}},
+    async loadCustomers(){try{const q=this.custSearch?`?search=${encodeURIComponent(this.custSearch)}`:'';const r=await fetch(`${this.apiUrl}/customers${q}`);this.customers=await r.json()}catch(e){}},
+    async loadVATReport(){
+      if(!this.vatFrom||!this.vatTo){this.showToast('Select date range','error');return}
+      const r=await fetch(`${this.apiUrl}/admin/vat-report?admin_pin=${this.user.pin}&from_date=${this.vatFrom}&to_date=${this.vatTo}`);
+      if(r.ok)this.vatReport=await r.json();
+    },
+    addToCart(item){const ex=this.cart.find(i=>i.id===item.id);if(ex)ex.qty++;else this.cart.push({...item,qty:1})},
+    inc(idx){this.cart[idx].qty++},
+    dec(idx){if(this.cart[idx].qty>1)this.cart[idx].qty--;else this.cart.splice(idx,1)},
+    async submitOrder(){
+      if(!this.cart.length)return;
+      this.submitting=true;
+      const order={
+        items:this.cart,subtotal:this.cartSubtotal,
+        delivery_charge:this.orderMode==='delivery'?3.5:0,
+        total:this.cartTotal,payment_type:this.paymentType,
+        mode:this.orderMode,
+        table_number:this.orderMode==='dine-in'?this.tableNumber:null,
+        covers:this.orderMode==='dine-in'?this.covers:1,
+        customer_name:this.custName||(this.orderMode==='dine-in'?`Table ${this.tableNumber}`:'Guest'),
+        customer_phone:this.custPhone,customer_address:this.custAddress,
+        notes:this.notes,created_by:this.user.pin,
+      };
+      try{
+        const r=await fetch(`${this.apiUrl}/orders`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(order)});
+        const d=await r.json();
+        if(d.success){
+          this.showToast(`Order #${d.order.order_number} placed! 🎉`);
+          this.cart=[];this.custName='';this.custPhone='';this.custAddress='';this.notes='';this.tableNumber=null;
+          this.activeTab='dashboard';
+          this.loadOrders();this.loadTables();this.loadStats();
+        }else{this.showToast('Failed to place order','error')}
+      }catch(e){this.showToast('Network error','error')}
+      finally{this.submitting=false}
+    },
+    async quickStatus(orderId,status){
+      if(!status)return;
+      await fetch(`${this.apiUrl}/orders/${orderId}/status`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status,staff_pin:this.user.pin})});
+      this.loadOrders();this.loadStats();
+      this.showToast(`Updated to ${status}`);
+    },
+    selectTable(t){this.selectedTable=t},
+    openNewTableOrder(t){this.selectedTable=null;this.orderMode='dine-in';this.tableNumber=t.number;this.activeTab='pos';},
+    openTableOrder(t){this.selectedTable=null;this.orderMode='dine-in';this.tableNumber=t.number;this.activeTab='pos';},
+    async closeTable(t){
+      if(!t.active_order)return;
+      await this.quickStatus(t.active_order.id,'completed');
+      await fetch(`${this.apiUrl}/tables/${t.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:'available',current_order_id:null})});
+      this.selectedTable=null;this.loadTables();
+      this.showToast(`Table ${t.number} closed ✅`);
+    },
+    promptDelete(order){this.deleteDialog=order;this.deletePassword=''},
+    async confirmDelete(){
+      if(!this.deleteDialog)return;
+      try{
+        const r=await fetch(`${this.apiUrl}/admin/orders/${this.deleteDialog.id}`,{
+          method:'DELETE',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({admin_pin:this.user.pin,delete_password:this.deletePassword,permanent:false})
+        });
+        if(r.ok){this.showToast('Order deleted');this.deleteDialog=null;this.deletePassword='';this.loadOrders();}
+        else{this.showToast('Wrong delete password','error')}
+      }catch(e){this.showToast('Error','error')}
+    },
+    async addMenuItem(){
+      if(!this.newItem.name||!this.newItem.price){this.showToast('Name and price required','error');return}
+      const r=await fetch(`${this.apiUrl}/menu`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(this.newItem)});
+      if(r.ok){this.showToast('Item added to menu!');this.newItem={name:'',price:'',vat_rate:'',course:'mains',allergens:''};this.loadMenu();}
+    },
+    startOrderForCustomer(c){this.custName=c.name;this.custPhone=c.phone||'';this.activeTab='pos';this.showToast(`Starting order for ${c.name}`)},
+    dlCSV(type){
+      const urls={orders:`${this.apiUrl}/export/orders`,customers:`${this.apiUrl}/export/customers`,sales:`${this.apiUrl}/export/sales?days=365`};
+      window.open(urls[type],'_blank');this.showToast('Downloading...');
+    },
+    updateTime(){this.currentTime=new Date().toLocaleTimeString('en-IE',{hour:'2-digit',minute:'2-digit'})},
+  },
+  mounted(){
+    this.updateTime();
+    setInterval(this.updateTime,1000);
+    setInterval(()=>{if(this.user){this.loadStats();this.loadOrders();this.loadTables();}},15000);
+    fetch(`${this.apiUrl}/health`).then(()=>this.conn='connected').catch(()=>this.conn='disconnected');
+  }
+}).mount('#app');
+</script>
 </body>
 </html>
