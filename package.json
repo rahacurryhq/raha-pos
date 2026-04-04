@@ -1,0 +1,27 @@
+{
+  "name": "raha-cloud-pos",
+  "version": "1.0.0",
+  "description": "The RAHA Cloud-Based Restaurant POS System with Real-time KDS",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "init-db": "node init-database.js"
+  },
+  "keywords": ["restaurant", "pos", "kds", "cloud", "realtime"],
+  "author": "The RAHA",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "better-sqlite3": "^9.2.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
