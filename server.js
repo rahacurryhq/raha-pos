@@ -39,6 +39,33 @@ try {
 const sessions = new Map();
 const SESSION_TIMEOUT = 8 * 60 * 60 * 1000;
 
+// ============= SECURITY =============
+// Rate limiting: max 10 login attempts per IP per 15 minutes
+const loginAttempts = new Map();
+function checkRateLimit(ip) {
+    const now = Date.now();
+    const windowMs = 15 * 60 * 1000;
+    const max = 10;
+    if (!loginAttempts.has(ip)) loginAttempts.set(ip, []);
+    const attempts = loginAttempts.get(ip).filter(t => now - t < windowMs);
+    loginAttempts.set(ip, attempts);
+    if (attempts.length >= max) return false;
+    attempts.push(now);
+    return true;
+}
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, times] of loginAttempts.entries()) {
+        const fresh = times.filter(t => now - t < 15 * 60 * 1000);
+        if (fresh.length === 0) loginAttempts.delete(ip);
+        else loginAttempts.set(ip, fresh);
+    }
+}, 3600000);
+
+// Master password - set MASTER_PASSWORD in Railway environment variables
+// Used for permanent data wipe and data export
+const MASTER_PASSWORD = process.env.MASTER_PASSWORD || null;
+
 function hashPin(pin) {
     const salt = crypto.randomBytes(16).toString('hex');
     const hash = crypto.pbkdf2Sync(pin, salt, 10000, 64, 'sha512').toString('hex');
@@ -368,6 +395,12 @@ app.post('/api/login', (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid PIN' });
         }
 
+        // Rate limiting
+        const clientIp = req.ip || req.connection.remoteAddress || 'unknown';
+        if (!checkRateLimit(clientIp)) {
+            return res.status(429).json({ success: false, message: 'Too many attempts. Try again in 15 minutes.' });
+        }
+
         const users = db.prepare('SELECT * FROM users WHERE active = 1').all();
         let user = null;
 
@@ -501,6 +534,7 @@ app.post('/api/orders', (req, res) => {
         delete customerOrder.vat_rate;
 
         io.emit('new_order', customerOrder);
+        autoSaveCustomer({...order, customer_phone: order.customer_phone});
 
         db.prepare('INSERT INTO staff_activity (user_id, staff_name, action, order_id, details) VALUES (?, ?, ?, ?, ?)')
             .run(1, order.created_by, 'create_order', newOrder.id, `Order #${orderNumber}`);
@@ -683,6 +717,298 @@ app.get('/api/dashboard/stats', (req, res) => {
     } catch (err) {
         console.error('Stats error:', err);
         res.status(500).json({ error: 'Failed to load stats' });
+    }
+});
+
+
+
+
+// ============= MASTER PASSWORD ROUTES =============
+
+// Verify master password
+function verifyMaster(password) {
+    if (!MASTER_PASSWORD) return false;
+    return crypto.timingSafeEqual(
+        Buffer.from(password || ''),
+        Buffer.from(MASTER_PASSWORD)
+    );
+}
+
+// Export ALL data as JSON (master password required)
+app.get('/api/master/export', (req, res) => {
+    try {
+        const { password } = req.query;
+        if (!verifyMaster(password)) {
+            return res.status(403).json({ error: 'Invalid master password' });
+        }
+        const data = {
+            exported_at: new Date().toISOString(),
+            orders: db.prepare('SELECT * FROM orders').all().map(o => ({...o, items: JSON.parse(o.items)})),
+            customers: db.prepare('SELECT * FROM customers').all(),
+            menu_items: db.prepare('SELECT * FROM menu_items WHERE deleted = 0').all(),
+            vat_periods: db.prepare('SELECT * FROM vat_periods').all(),
+            staff_activity: db.prepare('SELECT * FROM staff_activity ORDER BY id DESC LIMIT 1000').all(),
+            settings: db.prepare('SELECT * FROM settings').all(),
+            summary: {
+                total_orders: db.prepare('SELECT COUNT(*) as c FROM orders WHERE deleted=0').get().c,
+                total_revenue: db.prepare("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE deleted=0 AND status!='cancelled'").get().s,
+                total_customers: db.prepare('SELECT COUNT(*) as c FROM customers WHERE deleted=0').get().c,
+                db_path: dbPath
+            }
+        };
+        res.setHeader('Content-Disposition', 'attachment; filename="raha-pos-export-' + new Date().toISOString().split('T')[0] + '.json"');
+        res.json(data);
+    } catch(err) {
+        console.error('Export error:', err);
+        res.status(500).json({ error: 'Export failed' });
+    }
+});
+
+// PERMANENT WIPE - deletes ALL data forever, cannot be undone
+app.post('/api/master/wipe', (req, res) => {
+    try {
+        const { password, confirm } = req.body;
+        if (!verifyMaster(password)) {
+            return res.status(403).json({ error: 'Invalid master password' });
+        }
+        if (confirm !== 'WIPE EVERYTHING') {
+            return res.status(400).json({ error: 'Must confirm with exact phrase: WIPE EVERYTHING' });
+        }
+
+        console.log('⚠️  MASTER WIPE INITIATED at', new Date().toISOString());
+
+        // Wipe all tables permanently
+        db.exec(`
+            DELETE FROM orders;
+            DELETE FROM customers;
+            DELETE FROM staff_activity;
+            DELETE FROM settings;
+            DELETE FROM vat_periods;
+            DELETE FROM order_sequence;
+            UPDATE order_sequence SET current_number = 0 WHERE id = 1;
+            INSERT OR IGNORE INTO order_sequence (id, current_number) VALUES (1, 0);
+            VACUUM;
+        `);
+
+        // Re-insert default VAT periods
+        db.prepare("INSERT INTO vat_periods (start_date, end_date, vat_rate, description) VALUES ('2020-01-01','2026-06-30',13.5,'Standard Irish VAT rate')").run();
+        db.prepare("INSERT INTO vat_periods (start_date, end_date, vat_rate, description) VALUES ('2026-07-01',NULL,9.0,'Reduced rate from July 2026')").run();
+
+        const settings = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+        settings.run('restaurant_name', 'The RAHA');
+        settings.run('delivery_charge', '3.50');
+        settings.run('currency', 'EUR');
+
+        console.log('✓ Master wipe complete - all data permanently deleted');
+        res.json({ success: true, message: 'All data permanently deleted. Cannot be recovered.' });
+    } catch(err) {
+        console.error('Wipe error:', err);
+        res.status(500).json({ error: 'Wipe failed: ' + err.message });
+    }
+});
+
+// Database size info
+app.get('/api/master/info', (req, res) => {
+    try {
+        const { password } = req.query;
+        if (!verifyMaster(password)) {
+            return res.status(403).json({ error: 'Invalid master password' });
+        }
+        const fs = require('fs');
+        let dbSizeBytes = 0;
+        try { dbSizeBytes = fs.statSync(dbPath).size; } catch(e) {}
+        const info = {
+            db_path: dbPath,
+            db_size_bytes: dbSizeBytes,
+            db_size_kb: (dbSizeBytes / 1024).toFixed(1),
+            db_size_mb: (dbSizeBytes / 1024 / 1024).toFixed(3),
+            total_orders: db.prepare('SELECT COUNT(*) as c FROM orders').get().c,
+            total_customers: db.prepare('SELECT COUNT(*) as c FROM customers').get().c,
+            total_revenue: db.prepare("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE deleted=0 AND status!='cancelled'").get().s,
+            oldest_order: db.prepare('SELECT MIN(timestamp) as t FROM orders').get().t,
+            newest_order: db.prepare('SELECT MAX(timestamp) as t FROM orders').get().t,
+        };
+        res.json(info);
+    } catch(err) {
+        res.status(500).json({ error: 'Info failed' });
+    }
+});
+
+// Auto-save customer from order data
+function autoSaveCustomer(order) {
+    try {
+        if (!order.customer_name || order.customer_name === 'Guest') return;
+        if (!order.customer_phone) return;
+        const existing = db.prepare("SELECT id FROM customers WHERE phone = ? AND deleted = 0").get(order.customer_phone);
+        if (existing) {
+            db.prepare("UPDATE customers SET name=?, total_orders=total_orders+1, total_spent=total_spent+?, last_order_date=datetime('now'), updated_at=datetime('now') WHERE id=?")
+                .run(order.customer_name, order.total || 0, existing.id);
+        } else {
+            db.prepare("INSERT INTO customers (name, phone, address, total_orders, total_spent, last_order_date) VALUES (?,?,?,1,?,datetime('now'))")
+                .run(order.customer_name, order.customer_phone, order.customer_address || '', order.total || 0);
+        }
+    } catch(e) { console.log('Auto-save customer skipped:', e.message); }
+}
+
+// Daily Sales Report
+app.get('/api/reports/daily-sales', (req, res) => {
+    try {
+        const { days = 30 } = req.query;
+        const rows = db.prepare(`
+            SELECT 
+                DATE(timestamp) as date,
+                COUNT(*) as total_orders,
+                ROUND(SUM(total), 2) as revenue,
+                ROUND(SUM(vat_amount), 2) as vat,
+                ROUND(SUM(net_amount), 2) as net,
+                SUM(CASE WHEN mode = 'delivery' THEN 1 ELSE 0 END) as delivery_count,
+                SUM(CASE WHEN mode = 'collection' THEN 1 ELSE 0 END) as collection_count,
+                SUM(CASE WHEN payment_type = 'cash' THEN 1 ELSE 0 END) as cash_count,
+                SUM(CASE WHEN payment_type = 'card' THEN 1 ELSE 0 END) as card_count
+            FROM orders
+            WHERE deleted = 0 AND status != 'cancelled'
+            AND DATE(timestamp) >= DATE('now', '-' || ? || ' days')
+            GROUP BY DATE(timestamp)
+            ORDER BY date DESC
+        `).all(parseInt(days));
+        res.json(rows);
+    } catch (err) {
+        console.error('Daily sales error:', err);
+        res.status(500).json({ error: 'Failed to load daily sales' });
+    }
+});
+
+// Get all customers
+app.get('/api/customers', (req, res) => {
+    try {
+        const { search } = req.query;
+        let query = 'SELECT * FROM customers WHERE deleted = 0';
+        const params = [];
+        if (search) {
+            query += ' AND (name LIKE ? OR phone LIKE ?)';
+            params.push('%' + search + '%', '%' + search + '%');
+        }
+        query += ' ORDER BY total_orders DESC, updated_at DESC';
+        res.json(db.prepare(query).all(...params));
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to load customers' });
+    }
+});
+
+// Add or update customer manually
+app.post('/api/customers', (req, res) => {
+    try {
+        const { name, phone, email, address, delivery_notes, allergen_info } = req.body;
+        if (!name) return res.status(400).json({ error: 'Name required' });
+        if (phone) {
+            const existing = db.prepare("SELECT id FROM customers WHERE phone = ? AND deleted = 0").get(phone);
+            if (existing) {
+                db.prepare("UPDATE customers SET name=?, email=?, address=?, delivery_notes=?, allergen_info=?, updated_at=datetime('now') WHERE id=?")
+                    .run(name, email||'', address||'', delivery_notes||'', allergen_info||'', existing.id);
+                return res.json({ success: true, id: existing.id, updated: true });
+            }
+        }
+        const result = db.prepare("INSERT INTO customers (name, phone, email, address, delivery_notes, allergen_info) VALUES (?,?,?,?,?,?)")
+            .run(name, phone||'', email||'', address||'', delivery_notes||'', allergen_info||'');
+        res.json({ success: true, id: result.lastInsertRowid, updated: false });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to save customer' });
+    }
+});
+
+// Get customer order history
+app.get('/api/customers/:id/orders', (req, res) => {
+    try {
+        const cust = db.prepare('SELECT phone FROM customers WHERE id=?').get(req.params.id);
+        if (!cust || !cust.phone) return res.json([]);
+        const orders = db.prepare("SELECT * FROM orders WHERE customer_phone = ? AND deleted=0 ORDER BY timestamp DESC LIMIT 20")
+            .all(cust.phone);
+        res.json(orders.map(o => ({...o, items: JSON.parse(o.items)})));
+    } catch (err) {
+        res.status(500).json({ error: 'Failed' });
+    }
+});
+
+// Delete customer (soft)
+app.delete('/api/customers/:id', (req, res) => {
+    try {
+        db.prepare("UPDATE customers SET deleted=1, deleted_at=datetime('now') WHERE id=?").run(req.params.id);
+        res.json({ success: true });
+    } catch(err) {
+        res.status(500).json({ error: 'Failed' });
+    }
+});
+
+
+// CSV Export Routes (Admin only)
+function toCSV(rows, cols) {
+    const header = cols.join(',');
+    const lines = rows.map(row =>
+        cols.map(col => {
+            const val = row[col] === null || row[col] === undefined ? '' : String(row[col]);
+            return '"' + val.replace(/"/g, '""') + '"';
+        }).join(',')
+    );
+    return [header, ...lines].join('\n');
+}
+
+app.get('/api/export/orders', (req, res) => {
+    try {
+        const { from_date, to_date } = req.query;
+        let query = "SELECT order_number, timestamp, customer_name, customer_phone, customer_address, subtotal, delivery_charge, total, vat_rate, vat_amount, net_amount, payment_type, mode, status, notes, special_instructions, allergies, created_by FROM orders WHERE deleted = 0";
+        const params = [];
+        if (from_date) { query += ' AND DATE(timestamp) >= ?'; params.push(from_date); }
+        if (to_date)   { query += ' AND DATE(timestamp) <= ?'; params.push(to_date); }
+        query += ' ORDER BY timestamp DESC';
+        const rows = db.prepare(query).all(...params);
+        const cols = ['order_number','timestamp','customer_name','customer_phone','customer_address','subtotal','delivery_charge','total','vat_rate','vat_amount','net_amount','payment_type','mode','status','notes','special_instructions','allergies','created_by'];
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="raha-orders.csv"');
+        res.send(toCSV(rows, cols));
+    } catch(err) {
+        console.error(err);
+        res.status(500).json({ error: 'Export failed' });
+    }
+});
+
+app.get('/api/export/customers', (req, res) => {
+    try {
+        const rows = db.prepare("SELECT name, phone, email, address, delivery_notes, allergen_info, total_orders, total_spent, last_order_date, created_at FROM customers WHERE deleted = 0 ORDER BY total_orders DESC").all();
+        const cols = ['name','phone','email','address','delivery_notes','allergen_info','total_orders','total_spent','last_order_date','created_at'];
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="raha-customers.csv"');
+        res.send(toCSV(rows, cols));
+    } catch(err) {
+        res.status(500).json({ error: 'Export failed' });
+    }
+});
+
+app.get('/api/export/sales', (req, res) => {
+    try {
+        const { days = 365 } = req.query;
+        const rows = db.prepare(`
+            SELECT 
+                DATE(timestamp) as date,
+                COUNT(*) as total_orders,
+                ROUND(SUM(total),2) as revenue,
+                ROUND(SUM(vat_amount),2) as vat,
+                ROUND(SUM(net_amount),2) as net,
+                SUM(CASE WHEN mode='delivery' THEN 1 ELSE 0 END) as delivery_orders,
+                SUM(CASE WHEN mode='collection' THEN 1 ELSE 0 END) as collection_orders,
+                SUM(CASE WHEN payment_type='cash' THEN 1 ELSE 0 END) as cash_orders,
+                SUM(CASE WHEN payment_type='card' THEN 1 ELSE 0 END) as card_orders
+            FROM orders
+            WHERE deleted=0 AND status != 'cancelled'
+            AND DATE(timestamp) >= DATE('now', '-' || ? || ' days')
+            GROUP BY DATE(timestamp)
+            ORDER BY date DESC
+        `).all(parseInt(days));
+        const cols = ['date','total_orders','revenue','vat','net','delivery_orders','collection_orders','cash_orders','card_orders'];
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="raha-daily-sales.csv"');
+        res.send(toCSV(rows, cols));
+    } catch(err) {
+        res.status(500).json({ error: 'Export failed' });
     }
 });
 
