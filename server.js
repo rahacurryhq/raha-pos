@@ -280,7 +280,7 @@ function initDatabase() {
         const menuVersion = db.prepare("SELECT value FROM settings WHERE key='menu_version'").get();
         if (!menuVersion || menuVersion.value !== 'v4_raha') {
             console.log('🔄 Updating menu to Raha v4 (real menu)...');
-            db.prepare('UPDATE menu_items SET deleted=1').run(); // soft-delete all old items
+            db.prepare('DELETE FROM menu_items').run(); // wipe all old menu items completely
             insertFullMenu();
             db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('menu_version','v4_raha',datetime('now'))").run();
         }
@@ -477,7 +477,7 @@ function insertFullMenu() {
         { name: 'Irish Coffee', course: 'drinks', cat: 'Tea & Coffee', price: 7.00, desc: 'Hot coffee with Irish whiskey and cream.', allergens: 'Milk' },
     ];
 
-    const insert = db.prepare('INSERT INTO menu_items (name, course, category, price, description, allergens, display_order) VALUES (?,?,?,?,?,?,?)');
+    const insert = db.prepare('INSERT OR REPLACE INTO menu_items (name, course, category, price, description, allergens, display_order) VALUES (?,?,?,?,?,?,?)');
     menu.forEach((item, idx) => insert.run(item.name, item.course, item.cat, item.price, item.desc, item.allergens, idx));
     console.log(`✓ Full Raha menu created (${menu.length} items)`);
 }
