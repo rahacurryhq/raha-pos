@@ -271,7 +271,8 @@ function initDatabase() {
         settings.run('restaurant_name', 'The RAHA');
         settings.run('delivery_charge', '3.50');
         settings.run('currency', 'EUR');
-        settings.run('delete_password', 'Raha@Delete2026');
+        settings.run('delete_password', process.env.DELETE_PASSWORD || 'Raha@Delete2026');
+        settings.run('kiosk_unlock_password', process.env.KIOSK_PASSWORD || 'Raha@Kiosk2026');
 
         const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
         if (userCount.count === 0) insertDefaultUsers();
@@ -484,7 +485,17 @@ function insertFullMenu() {
 
 // ============= API ROUTES =============
 
+
+// Serve service worker at root scope (important for offline mode)
+app.get('/sw.js', (req, res) => {
+    res.setHeader('Content-Type', 'application/javascript');
+    res.setHeader('Service-Worker-Allowed', '/');
+    res.sendFile(path.join(__dirname, 'public', 'sw.js'));
+});
+
+// Offline queue sync endpoint - get pending offline orders count
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
 
 // LOGIN
 app.post('/api/login', (req, res) => {
@@ -1027,6 +1038,135 @@ app.post('/api/kiosk/confirm-order', async (req, res) => {
         console.error('Kiosk confirm error:', err);
         res.status(500).json({ error: 'Failed to confirm order' });
     }
+});
+
+
+// ===== STAFF MANAGEMENT =====
+app.get('/api/staff', (req, res) => {
+    try {
+        const staff = db.prepare('SELECT id, name, role, active, last_login, created_at FROM users ORDER BY role, name').all();
+        res.json(staff);
+    } catch(err) { res.status(500).json({ error: 'Failed' }); }
+});
+
+app.post('/api/staff', (req, res) => {
+    try {
+        const { name, pin, role, admin_pin } = req.body;
+        const admins = db.prepare("SELECT * FROM users WHERE role='admin' AND active=1").all();
+        let isAdmin = false;
+        for (const u of admins) { if (verifyPin(admin_pin, u.pin_hash, u.pin_salt)) { isAdmin = true; break; } }
+        if (!isAdmin) return res.status(403).json({ error: 'Admin PIN required' });
+        if (!name || !pin || pin.length !== 4 || !role) return res.status(400).json({ error: 'Name, 4-digit PIN and role required' });
+        const { hash, salt } = hashPin(pin);
+        const result = db.prepare("INSERT INTO users (name, pin_hash, pin_salt, role) VALUES (?,?,?,?)").run(name, hash, salt, role);
+        res.json({ success: true, id: result.lastInsertRowid });
+    } catch(err) {
+        if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'PIN already in use — choose a different PIN' });
+        res.status(500).json({ error: 'Failed to add staff' });
+    }
+});
+
+app.put('/api/staff/:id', (req, res) => {
+    try {
+        const { name, role, active, admin_pin } = req.body;
+        const admins = db.prepare("SELECT * FROM users WHERE role='admin' AND active=1").all();
+        let isAdmin = false;
+        for (const u of admins) { if (verifyPin(admin_pin, u.pin_hash, u.pin_salt)) { isAdmin = true; break; } }
+        if (!isAdmin) return res.status(403).json({ error: 'Admin PIN required' });
+        db.prepare("UPDATE users SET name=?, role=?, active=? WHERE id=?").run(name, role, active ? 1 : 0, req.params.id);
+        res.json({ success: true });
+    } catch(err) { res.status(500).json({ error: 'Failed' }); }
+});
+
+app.delete('/api/staff/:id', (req, res) => {
+    try {
+        const { admin_pin } = req.body;
+        const admins = db.prepare("SELECT * FROM users WHERE role='admin' AND active=1").all();
+        let isAdmin = false;
+        for (const u of admins) { if (verifyPin(admin_pin, u.pin_hash, u.pin_salt)) { isAdmin = true; break; } }
+        if (!isAdmin) return res.status(403).json({ error: 'Admin PIN required' });
+        // Never delete the last admin
+        const adminCount = db.prepare("SELECT COUNT(*) as c FROM users WHERE role='admin' AND active=1").get().c;
+        const target = db.prepare("SELECT role FROM users WHERE id=?").get(req.params.id);
+        if (target && target.role === 'admin' && adminCount <= 1) return res.status(400).json({ error: 'Cannot remove the last admin' });
+        db.prepare("UPDATE users SET active=0 WHERE id=?").run(req.params.id);
+        res.json({ success: true });
+    } catch(err) { res.status(500).json({ error: 'Failed' }); }
+});
+
+// ===== CUSTOMER CSV IMPORT =====
+app.post('/api/customers/import', (req, res) => {
+    try {
+        const { customers } = req.body;
+        if (!customers || !Array.isArray(customers)) return res.status(400).json({ error: 'Invalid data' });
+        const upsert = db.prepare(`INSERT INTO customers (name, phone, email, address, delivery_notes, allergen_info)
+            VALUES (?,?,?,?,?,?)
+            ON CONFLICT(phone) DO UPDATE SET
+            name=excluded.name, email=excluded.email, address=excluded.address,
+            delivery_notes=excluded.delivery_notes, allergen_info=excluded.allergen_info,
+            updated_at=datetime('now')`);
+        let imported = 0, skipped = 0;
+        const importMany = db.transaction((rows) => {
+            for (const c of rows) {
+                if (!c.name) { skipped++; continue; }
+                try {
+                    upsert.run(c.name||'', c.phone||'', c.email||'', c.address||'', c.delivery_notes||'', c.allergen_info||'');
+                    imported++;
+                } catch(e) { skipped++; }
+            }
+        });
+        importMany(customers);
+        res.json({ success: true, imported, skipped });
+    } catch(err) { res.status(500).json({ error: 'Import failed: ' + err.message }); }
+});
+
+// ===== DATABASE VIEWER (master password) =====
+app.get('/api/master/tables', (req, res) => {
+    try {
+        const { password } = req.query;
+        if (!verifyMaster(password)) return res.status(403).json({ error: 'Invalid master password' });
+        const tables = {
+            orders: db.prepare('SELECT COUNT(*) as count FROM orders WHERE deleted=0').get().count,
+            customers: db.prepare('SELECT COUNT(*) as count FROM customers WHERE deleted=0').get().count,
+            menu_items: db.prepare('SELECT COUNT(*) as count FROM menu_items WHERE deleted=0').get().count,
+            staff: db.prepare('SELECT COUNT(*) as count FROM users WHERE active=1').get().count,
+        };
+        res.json(tables);
+    } catch(err) { res.status(500).json({ error: 'Failed' }); }
+});
+
+app.get('/api/master/table/:name', (req, res) => {
+    try {
+        const { password, limit = 50, offset = 0 } = req.query;
+        if (!verifyMaster(password)) return res.status(403).json({ error: 'Invalid master password' });
+        const allowed = ['orders', 'customers', 'menu_items', 'users', 'staff_activity'];
+        if (!allowed.includes(req.params.name)) return res.status(400).json({ error: 'Invalid table' });
+        const rows = db.prepare(`SELECT * FROM ${req.params.name} ORDER BY id DESC LIMIT ? OFFSET ?`).all(parseInt(limit), parseInt(offset));
+        const total = db.prepare(`SELECT COUNT(*) as c FROM ${req.params.name}`).get().c;
+        res.json({ rows, total });
+    } catch(err) { res.status(500).json({ error: 'Failed' }); }
+});
+
+app.delete('/api/master/table/:name/:id', (req, res) => {
+    try {
+        const { password } = req.body;
+        if (!verifyMaster(password)) return res.status(403).json({ error: 'Invalid master password' });
+        const allowed = ['orders', 'customers', 'menu_items'];
+        if (!allowed.includes(req.params.name)) return res.status(400).json({ error: 'Invalid table' });
+        db.prepare(`DELETE FROM ${req.params.name} WHERE id=?`).run(req.params.id);
+        res.json({ success: true });
+    } catch(err) { res.status(500).json({ error: 'Failed' }); }
+});
+
+// ===== KIOSK UNLOCK PASSWORD =====
+app.post('/api/kiosk/verify-unlock', (req, res) => {
+    try {
+        const { password } = req.body;
+        const stored = db.prepare("SELECT value FROM settings WHERE key='kiosk_unlock_password'").get();
+        if (!stored) return res.status(404).json({ error: 'No kiosk password set' });
+        const match = password === stored.value;
+        res.json({ success: match });
+    } catch(err) { res.status(500).json({ error: 'Failed' }); }
 });
 
 io.on('connection', (socket) => {
