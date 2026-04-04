@@ -56,7 +56,6 @@ function getNextOrderNumber() {
     return select.get().current_number;
 }
 
-// Get VAT rate for specific date
 function getVATRateForDate(date) {
     const rates = db.prepare(`
         SELECT vat_rate FROM vat_periods 
@@ -64,7 +63,6 @@ function getVATRateForDate(date) {
         AND (end_date IS NULL OR date(end_date) >= date(?))
         ORDER BY start_date DESC LIMIT 1
     `).get(date, date);
-    
     return rates ? rates.vat_rate : 13.5;
 }
 
@@ -254,7 +252,6 @@ function insertDefaultUsers() {
         { name: 'Chef', pin: '1111', role: 'chef' },
         { name: 'Front Staff', pin: '3333', role: 'front' }
     ];
-
     const insert = db.prepare('INSERT INTO users (name, pin_hash, pin_salt, role) VALUES (?, ?, ?, ?)');
     users.forEach(u => {
         const { hash, salt } = hashPin(u.pin);
@@ -276,7 +273,6 @@ function insertFullMenu() {
         {name: 'Mixed Platter', cat: 'Starters', price: 12.95, desc: 'Samosa, pakora, wings & kebab', allergens: 'Gluten,Dairy'},
         {name: 'Prawn Puri', cat: 'Starters', price: 8.95, desc: 'Spiced prawns on puri bread', allergens: 'Gluten,Shellfish'},
         {name: 'Tandoori Mushrooms', cat: 'Starters', price: 6.95, desc: 'Spiced mushrooms', allergens: 'Dairy'},
-
         // Curries - Chicken
         {name: 'Butter Chicken', cat: 'Curry-Chicken', price: 15.95, desc: 'Creamy tomato curry', allergens: 'Dairy,Nuts'},
         {name: 'Chicken Tikka Masala', cat: 'Curry-Chicken', price: 14.95, desc: 'Classic tikka masala', allergens: 'Dairy'},
@@ -290,7 +286,6 @@ function insertFullMenu() {
         {name: 'Chicken Saag', cat: 'Curry-Chicken', price: 14.95, desc: 'Spinach curry', allergens: 'Dairy'},
         {name: 'Chicken Rogan Josh', cat: 'Curry-Chicken', price: 14.95, desc: 'Kashmiri curry', allergens: 'None'},
         {name: 'Chicken Pathia', cat: 'Curry-Chicken', price: 14.95, desc: 'Sweet & sour hot curry', allergens: 'None'},
-
         // Curries - Lamb
         {name: 'Lamb Rogan Josh', cat: 'Curry-Lamb', price: 16.95, desc: 'Kashmiri lamb curry', allergens: 'None'},
         {name: 'Lamb Korma', cat: 'Curry-Lamb', price: 16.95, desc: 'Mild coconut lamb curry', allergens: 'Dairy,Nuts'},
@@ -300,7 +295,6 @@ function insertFullMenu() {
         {name: 'Lamb Bhuna', cat: 'Curry-Lamb', price: 16.95, desc: 'Thick sauce lamb curry', allergens: 'None'},
         {name: 'Lamb Jalfrezi', cat: 'Curry-Lamb', price: 16.95, desc: 'Lamb stir-fry', allergens: 'None'},
         {name: 'Lamb Balti', cat: 'Curry-Lamb', price: 16.95, desc: 'Medium lamb curry', allergens: 'None'},
-
         // Rice
         {name: 'Pilau Rice', cat: 'Rice', price: 3.95, desc: 'Basmati rice', allergens: 'None'},
         {name: 'Boiled Rice', cat: 'Rice', price: 3.50, desc: 'Plain basmati', allergens: 'None'},
@@ -310,7 +304,6 @@ function insertFullMenu() {
         {name: 'Lamb Biryani', cat: 'Rice', price: 16.95, desc: 'Layered lamb rice', allergens: 'Dairy'},
         {name: 'Vegetable Biryani', cat: 'Rice', price: 12.95, desc: 'Layered veg rice', allergens: 'Dairy'},
         {name: 'Special Fried Rice', cat: 'Rice', price: 5.95, desc: 'Egg, peas & veg', allergens: 'Eggs'},
-
         // Breads
         {name: 'Plain Naan', cat: 'Bread', price: 2.95, desc: 'Traditional naan', allergens: 'Gluten,Dairy'},
         {name: 'Garlic Naan', cat: 'Bread', price: 3.50, desc: 'Garlic butter naan', allergens: 'Gluten,Dairy'},
@@ -320,7 +313,6 @@ function insertFullMenu() {
         {name: 'Tandoori Roti', cat: 'Bread', price: 2.50, desc: 'Whole wheat bread', allergens: 'Gluten'},
         {name: 'Chapati', cat: 'Bread', price: 2.00, desc: 'Thin flatbread', allergens: 'Gluten'},
         {name: 'Paratha', cat: 'Bread', price: 3.50, desc: 'Layered flatbread', allergens: 'Gluten,Dairy'},
-
         // Sides
         {name: 'Chips', cat: 'Sides', price: 3.50, desc: 'Fresh cut chips', allergens: 'None'},
         {name: 'Poppadoms (4pc)', cat: 'Sides', price: 2.50, desc: 'With chutney', allergens: 'Gluten'},
@@ -332,7 +324,6 @@ function insertFullMenu() {
         {name: 'Chips & Cheese', cat: 'Sides', price: 4.95, desc: 'Chips with cheese', allergens: 'Dairy'},
         {name: 'Bombay Potatoes', cat: 'Sides', price: 4.50, desc: 'Spiced potatoes', allergens: 'None'},
         {name: 'Saag Aloo', cat: 'Sides', price: 4.95, desc: 'Spinach & potato', allergens: 'None'},
-
         // Drinks
         {name: 'Coke 330ml', cat: 'Drinks', price: 2.00, desc: 'Can', allergens: 'None'},
         {name: 'Diet Coke 330ml', cat: 'Drinks', price: 2.00, desc: 'Can', allergens: 'None'},
@@ -342,7 +333,6 @@ function insertFullMenu() {
         {name: 'Sparkling Water 500ml', cat: 'Drinks', price: 1.50, desc: 'Sparkling', allergens: 'None'},
         {name: 'Orange Juice 330ml', cat: 'Drinks', price: 2.50, desc: 'Fresh juice', allergens: 'None'},
         {name: 'Mango Lassi', cat: 'Drinks', price: 3.50, desc: 'Yogurt drink', allergens: 'Dairy'},
-
         // Vegetarian
         {name: 'Vegetable Korma', cat: 'Vegetarian', price: 12.95, desc: 'Mild veg curry', allergens: 'Dairy,Nuts'},
         {name: 'Vegetable Jalfrezi', cat: 'Vegetarian', price: 12.95, desc: 'Spicy veg stir-fry', allergens: 'None'},
@@ -358,11 +348,9 @@ function insertFullMenu() {
         INSERT INTO menu_items (name, category, price, description, allergens, display_order)
         VALUES (?, ?, ?, ?, ?, ?)
     `);
-
     menu.forEach((item, idx) => {
         insert.run(item.name, item.cat, item.price, item.desc, item.allergens, idx);
     });
-
     console.log(`✓ Full menu created (${menu.length} items)`);
 }
 
@@ -404,7 +392,7 @@ app.post('/api/login', (req, res) => {
             loginTime: Date.now()
         });
 
-        // ✅ FIXED: double quotes outside so datetime('now') is valid SQL
+        // ✅ FIXED: double quotes outside so datetime('now') works
         db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(user.id);
         db.prepare('INSERT INTO staff_activity (user_id, staff_name, action, ip_address) VALUES (?, ?, ?, ?)')
             .run(user.id, user.name, 'login', req.ip);
@@ -565,16 +553,12 @@ app.put('/api/orders/:id/status', (req, res) => {
 app.get('/api/admin/vat-periods', (req, res) => {
     try {
         const { admin_pin } = req.query;
-        const users = db.prepare('SELECT * FROM users WHERE role = "admin" AND active = 1').all();
+        const users = db.prepare("SELECT * FROM users WHERE role = 'admin' AND active = 1").all();
         let isAdmin = false;
         for (const u of users) {
-            if (verifyPin(admin_pin, u.pin_hash, u.pin_salt)) {
-                isAdmin = true;
-                break;
-            }
+            if (verifyPin(admin_pin, u.pin_hash, u.pin_salt)) { isAdmin = true; break; }
         }
         if (!isAdmin) return res.status(403).json({ error: 'Admin only' });
-
         const periods = db.prepare('SELECT * FROM vat_periods ORDER BY start_date DESC').all();
         res.json(periods);
     } catch (err) {
@@ -586,20 +570,14 @@ app.get('/api/admin/vat-periods', (req, res) => {
 app.post('/api/admin/vat-periods', (req, res) => {
     try {
         const { admin_pin, start_date, end_date, vat_rate, description } = req.body;
-        
-        const users = db.prepare('SELECT * FROM users WHERE role = "admin" AND active = 1').all();
+        const users = db.prepare("SELECT * FROM users WHERE role = 'admin' AND active = 1").all();
         let isAdmin = false;
         for (const u of users) {
-            if (verifyPin(admin_pin, u.pin_hash, u.pin_salt)) {
-                isAdmin = true;
-                break;
-            }
+            if (verifyPin(admin_pin, u.pin_hash, u.pin_salt)) { isAdmin = true; break; }
         }
         if (!isAdmin) return res.status(403).json({ error: 'Admin only' });
-
         db.prepare('INSERT INTO vat_periods (start_date, end_date, vat_rate, description, created_by) VALUES (?, ?, ?, ?, ?)')
             .run(start_date, end_date, vat_rate, description, admin_pin);
-
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Failed to create VAT period' });
@@ -611,31 +589,23 @@ app.delete('/api/admin/:type/:id', (req, res) => {
     try {
         const { type, id } = req.params;
         const { admin_pin, permanent } = req.body;
-
-        const users = db.prepare('SELECT * FROM users WHERE role = "admin" AND active = 1').all();
+        const users = db.prepare("SELECT * FROM users WHERE role = 'admin' AND active = 1").all();
         let isAdmin = false;
         for (const u of users) {
-            if (verifyPin(admin_pin, u.pin_hash, u.pin_salt)) {
-                isAdmin = true;
-                break;
-            }
+            if (verifyPin(admin_pin, u.pin_hash, u.pin_salt)) { isAdmin = true; break; }
         }
         if (!isAdmin) return res.status(403).json({ error: 'Admin only' });
-
         const tables = { orders: 'orders', customers: 'customers', menu: 'menu_items' };
         const table = tables[type];
         if (!table) return res.status(400).json({ error: 'Invalid type' });
-
         if (permanent) {
             db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
         } else {
             db.prepare(`UPDATE ${table} SET deleted = 1, deleted_by = ?, deleted_at = datetime('now') WHERE id = ?`)
                 .run(admin_pin, id);
         }
-
         db.prepare('INSERT INTO staff_activity (user_id, staff_name, action, details) VALUES (?, ?, ?, ?)')
             .run(1, 'Admin', `delete_${type}`, permanent ? 'PERMANENT' : 'Soft delete');
-
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Failed to delete' });
@@ -646,31 +616,19 @@ app.delete('/api/admin/:type/:id', (req, res) => {
 app.get('/api/admin/vat-report', (req, res) => {
     try {
         const { admin_pin, from_date, to_date } = req.query;
-
-        const users = db.prepare('SELECT * FROM users WHERE role = "admin" AND active = 1').all();
+        const users = db.prepare("SELECT * FROM users WHERE role = 'admin' AND active = 1").all();
         let isAdmin = false;
         for (const u of users) {
-            if (verifyPin(admin_pin, u.pin_hash, u.pin_salt)) {
-                isAdmin = true;
-                break;
-            }
+            if (verifyPin(admin_pin, u.pin_hash, u.pin_salt)) { isAdmin = true; break; }
         }
         if (!isAdmin) return res.status(403).json({ error: 'Admin only' });
 
-        let query = 'SELECT * FROM orders WHERE deleted = 0 AND status != "cancelled"';
+        let query = "SELECT * FROM orders WHERE deleted = 0 AND status != 'cancelled'";
         const params = [];
-
-        if (from_date) {
-            query += ' AND DATE(timestamp) >= ?';
-            params.push(from_date);
-        }
-        if (to_date) {
-            query += ' AND DATE(timestamp) <= ?';
-            params.push(to_date);
-        }
+        if (from_date) { query += ' AND DATE(timestamp) >= ?'; params.push(from_date); }
+        if (to_date) { query += ' AND DATE(timestamp) <= ?'; params.push(to_date); }
 
         const orders = db.prepare(query).all(...params);
-
         const report = {
             period: { from: from_date, to: to_date },
             total_orders: orders.length,
@@ -686,14 +644,13 @@ app.get('/api/admin/vat-report', (req, res) => {
                 net: o.net_amount
             }))
         };
-
         res.json(report);
     } catch (err) {
         res.status(500).json({ error: 'Failed to generate VAT report' });
     }
 });
 
-// ✅ FIX 2: Dashboard stats - null-safe, won't crash on empty DB
+// ✅ FIX 2 & 3: Dashboard stats - null-safe AND all string literals use single quotes
 app.get('/api/dashboard/stats', (req, res) => {
     try {
         const { role } = req.query;
@@ -704,23 +661,22 @@ app.get('/api/dashboard/stats', (req, res) => {
                 const row = stmt.get(...params);
                 if (!row) return 0;
                 return row.c !== undefined ? row.c : (row.s !== undefined ? row.s : 0);
-            } catch(e) {
-                return 0;
-            }
+            } catch(e) { return 0; }
         };
 
+        // ✅ FIXED: all status values use single quotes inside SQL strings
         const stats = {
-            today_orders:    safeGet(db.prepare('SELECT COUNT(*) as c FROM orders WHERE DATE(timestamp) = ? AND deleted = 0'), today),
-            today_revenue:   safeGet(db.prepare('SELECT COALESCE(SUM(total), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0'), today),
-            total_customers: safeGet(db.prepare('SELECT COUNT(*) as c FROM customers WHERE deleted = 0')),
-            pending_orders:  safeGet(db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = "pending" AND deleted = 0')),
-            cooking_orders:  safeGet(db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = "cooking" AND deleted = 0')),
-            ready_orders:    safeGet(db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = "ready" AND deleted = 0'))
+            today_orders:    safeGet(db.prepare("SELECT COUNT(*) as c FROM orders WHERE DATE(timestamp) = ? AND deleted = 0"), today),
+            today_revenue:   safeGet(db.prepare("SELECT COALESCE(SUM(total), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != 'cancelled' AND deleted = 0"), today),
+            total_customers: safeGet(db.prepare("SELECT COUNT(*) as c FROM customers WHERE deleted = 0")),
+            pending_orders:  safeGet(db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'pending' AND deleted = 0")),
+            cooking_orders:  safeGet(db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'cooking' AND deleted = 0")),
+            ready_orders:    safeGet(db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'ready' AND deleted = 0"))
         };
 
         if (role === 'admin') {
-            stats.today_vat = safeGet(db.prepare('SELECT COALESCE(SUM(vat_amount), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0'), today);
-            stats.today_net = safeGet(db.prepare('SELECT COALESCE(SUM(net_amount), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0'), today);
+            stats.today_vat = safeGet(db.prepare("SELECT COALESCE(SUM(vat_amount), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != 'cancelled' AND deleted = 0"), today);
+            stats.today_net = safeGet(db.prepare("SELECT COALESCE(SUM(net_amount), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != 'cancelled' AND deleted = 0"), today);
         }
 
         res.json(stats);
