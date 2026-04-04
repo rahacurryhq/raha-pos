@@ -1,326 +1,226 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAHA Kitchen Display v4</title>
-    <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        @keyframes pulse-border { 0%,100%{border-color:rgb(239,68,68)}50%{border-color:rgb(252,165,165)} }
-        .urgent { animation: pulse-border 1.5s ease-in-out infinite; }
-        @keyframes slide-in { from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)} }
-        .slide-in { animation: slide-in 0.3s ease-out; }
-        body { background: #111827; }
-    </style>
-</head>
-<body>
-<div id="app" class="min-h-screen text-white">
+// RAHA POS - Service Worker v1.0
+// Offline mode: caches app shell, queues orders when internet is down
 
-    <!-- LOGIN -->
-    <div v-if="!loggedIn" class="min-h-screen flex items-center justify-center bg-gray-900">
-        <div class="bg-gray-800 rounded-2xl shadow-2xl p-10 max-w-md w-full">
-            <div class="text-center mb-8">
-                <div class="text-6xl mb-4">🍳</div>
-                <h1 class="text-4xl font-bold text-orange-500 mb-2">Kitchen Display</h1>
-                <p class="text-gray-400">Enter your PIN to start</p>
-            </div>
-            <input v-model="loginPin" type="password" maxlength="4" @keyup.enter="login"
-                class="w-full px-4 py-4 text-3xl text-center bg-gray-700 text-white border-2 border-gray-600 rounded-xl focus:border-orange-500 focus:outline-none mb-4"
-                placeholder="••••" autofocus>
-            <button @click="login" class="w-full bg-orange-600 text-white py-4 rounded-xl font-bold text-xl hover:bg-orange-700 transition">
-                <i class="fas fa-sign-in-alt mr-2"></i>Start Kitchen Display
-            </button>
-            <p v-if="loginError" class="text-center text-red-400 mt-4">{{ loginError }}</p>
-        </div>
-    </div>
+const CACHE_NAME = 'raha-pos-v1';
+const OFFLINE_QUEUE_KEY = 'raha-offline-queue';
 
-    <!-- MAIN KDS -->
-    <div v-else class="flex flex-col h-screen">
+// Files to cache for offline use
+const CACHE_FILES = [
+    '/',
+    '/index.html',
+    '/kds.html',
+    '/table-order.html',
+    'https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js',
+    'https://cdn.tailwindcss.com',
+    'https://cdn.socket.io/4.6.1/socket.io.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
+];
 
-        <!-- HEADER -->
-        <div class="bg-gray-800 border-b-4 border-orange-600 px-6 py-3 flex justify-between items-center flex-shrink-0">
-            <div class="flex items-center space-x-4">
-                <h1 class="text-2xl font-bold text-orange-500">🍳 RAHA KITCHEN</h1>
-                <div :class="connected ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200'" class="flex items-center space-x-2 px-3 py-1 rounded-full text-sm">
-                    <div :class="connected ? 'bg-green-400 animate-pulse' : 'bg-red-400'" class="w-2 h-2 rounded-full"></div>
-                    <span>{{ connected ? 'Live' : 'Offline' }}</span>
-                </div>
-            </div>
-            <div class="flex items-center space-x-8">
-                <div class="text-center">
-                    <p class="text-xs text-gray-400">Pending</p>
-                    <p class="text-3xl font-bold text-yellow-400">{{ pendingCount }}</p>
-                </div>
-                <div class="text-center">
-                    <p class="text-xs text-gray-400">Cooking</p>
-                    <p class="text-3xl font-bold text-blue-400">{{ cookingCount }}</p>
-                </div>
-                <div class="text-center">
-                    <p class="text-xs text-gray-400">Ready</p>
-                    <p class="text-3xl font-bold text-green-400">{{ readyCount }}</p>
-                </div>
-                <div class="text-right">
-                    <div class="text-xl font-bold">{{ currentTime }}</div>
-                    <div class="text-xs text-gray-400">{{ currentDate }}</div>
-                </div>
-            </div>
-        </div>
+// ===== INSTALL: cache app shell =====
+self.addEventListener('install', event => {
+    console.log('[SW] Installing...');
+    event.waitUntil(
+        caches.open(CACHE_NAME).then(cache => {
+            // Cache what we can, ignore failures (CDN files might block)
+            return Promise.allSettled(
+                CACHE_FILES.map(url => cache.add(url).catch(() => {}))
+            );
+        }).then(() => self.skipWaiting())
+    );
+});
 
-        <!-- TAB SELECTOR -->
-        <div class="bg-gray-800 border-b border-gray-700 px-6 flex space-x-1 flex-shrink-0">
-            <button @click="activeTab = 'all'"
-                :class="activeTab === 'all' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white'"
-                class="px-6 py-3 font-bold text-sm rounded-t-lg transition">
-                All Orders ({{ activeOrders.length }})
-            </button>
-            <button @click="activeTab = 'dine-in'"
-                :class="activeTab === 'dine-in' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'"
-                class="px-6 py-3 font-bold text-sm rounded-t-lg transition">
-                🍽️ Dine-In ({{ dineInOrders.length }})
-            </button>
-            <button @click="activeTab = 'takeaway'"
-                :class="activeTab === 'takeaway' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'"
-                class="px-6 py-3 font-bold text-sm rounded-t-lg transition">
-                🛍️ Takeaway & Delivery ({{ takeawayOrders.length }})
-            </button>
-        </div>
+// ===== ACTIVATE: clean old caches =====
+self.addEventListener('activate', event => {
+    event.waitUntil(
+        caches.keys().then(keys =>
+            Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+        ).then(() => self.clients.claim())
+    );
+});
 
-        <!-- ORDERS GRID -->
-        <div class="flex-1 overflow-y-auto p-4">
-            <div v-if="displayOrders.length === 0" class="flex flex-col items-center justify-center h-full text-gray-600">
-                <i class="fas fa-check-circle text-8xl mb-4 text-green-700"></i>
-                <p class="text-3xl font-bold">All Caught Up!</p>
-                <p class="text-lg mt-2">No active orders</p>
-            </div>
+// ===== FETCH: serve from cache when offline =====
+self.addEventListener('fetch', event => {
+    const url = new URL(event.request.url);
 
-            <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-                <div v-for="order in displayOrders" :key="order.id"
-                    :class="['rounded-xl border-4 p-4 transition-all slide-in',
-                        getOrderBorderClass(order),
-                        order.status === 'pending' && getMinutes(order.timestamp) > 15 ? 'urgent' : '',
-                        order.mode === 'dine-in' ? 'bg-gray-800' : 'bg-gray-900']">
-
-                    <!-- ORDER HEADER -->
-                    <div class="flex justify-between items-start mb-3">
-                        <div>
-                            <div class="flex items-center space-x-2 mb-1">
-                                <span class="text-3xl font-bold text-white">#{{ order.order_number }}</span>
-                                <span v-if="order.mode === 'dine-in'" class="bg-purple-700 text-purple-100 px-2 py-0.5 rounded text-sm font-bold">
-                                    TABLE {{ order.table_number }}
-                                </span>
-                                <span v-else-if="order.mode === 'delivery'" class="bg-blue-700 text-blue-100 px-2 py-0.5 rounded text-sm font-bold">
-                                    🛵 DELIVERY
-                                </span>
-                                <span v-else class="bg-teal-700 text-teal-100 px-2 py-0.5 rounded text-sm font-bold">
-                                    🛍️ COLLECT
-                                </span>
-                            </div>
-                            <p class="text-gray-300 text-sm">{{ order.customer_name }}</p>
-                            <p v-if="order.covers && order.mode === 'dine-in'" class="text-gray-400 text-xs">{{ order.covers }} cover{{ order.covers > 1 ? 's' : '' }}</p>
-                        </div>
-                        <div class="text-right">
-                            <div :class="['text-2xl font-bold', getTimerClass(order.timestamp)]">
-                                {{ formatElapsed(order.timestamp) }}
-                            </div>
-                            <div class="text-xs text-gray-500">{{ formatTime(order.timestamp) }}</div>
-                        </div>
-                    </div>
-
-                    <!-- COURSE SECTIONS -->
-                    <div class="space-y-2 mb-3">
-                        <div v-for="course in getCoursesInOrder(order)" :key="course.name"
-                            v-if="course.items.length > 0"
-                            class="bg-gray-700 bg-opacity-60 rounded-lg p-3">
-                            <p class="text-xs font-bold uppercase tracking-wider mb-2"
-                                :class="{'text-yellow-400': course.name==='starters','text-orange-400': course.name==='mains','text-pink-400': course.name==='desserts','text-blue-400': course.name==='drinks'}">
-                                {{ course.label }}
-                            </p>
-                            <div v-for="item in course.items" :key="item.name" class="flex justify-between items-center py-0.5">
-                                <span class="text-white font-medium">
-                                    <span class="text-orange-400 font-bold mr-1">{{ item.qty }}×</span>{{ item.name }}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- NOTES -->
-                    <div v-if="order.notes || order.special_instructions || order.allergies" class="bg-yellow-900 border-l-4 border-yellow-500 p-2 rounded mb-3 text-xs">
-                        <p v-if="order.notes" class="text-yellow-200"><i class="fas fa-sticky-note mr-1"></i>{{ order.notes }}</p>
-                        <p v-if="order.special_instructions" class="text-yellow-200"><i class="fas fa-info-circle mr-1"></i>{{ order.special_instructions }}</p>
-                        <p v-if="order.allergies && order.allergies !== ''" class="text-red-300 font-bold"><i class="fas fa-exclamation-triangle mr-1"></i>ALLERGY: {{ order.allergies }}</p>
-                    </div>
-
-                    <!-- STATUS BADGE -->
-                    <div class="mb-3">
-                        <span :class="getStatusBadgeClass(order.status)" class="px-3 py-1 rounded-full text-sm font-bold">
-                            {{ order.status.toUpperCase() }}
-                        </span>
-                    </div>
-
-                    <!-- ACTION BUTTONS -->
-                    <div class="grid grid-cols-1 gap-2">
-                        <button v-if="order.status === 'pending'"
-                            @click="updateStatus(order.id, 'cooking')"
-                            class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-lg transition text-sm">
-                            <i class="fas fa-fire mr-2"></i>Start Cooking
-                        </button>
-                        <button v-if="order.status === 'cooking'"
-                            @click="updateStatus(order.id, 'ready')"
-                            class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 rounded-lg transition text-sm">
-                            <i class="fas fa-check mr-2"></i>Mark Ready
-                        </button>
-                        <button v-if="order.status === 'ready'"
-                            @click="updateStatus(order.id, 'completed')"
-                            class="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 rounded-lg transition text-sm">
-                            <i class="fas fa-check-double mr-2"></i>Completed
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-const { createApp } = Vue;
-createApp({
-    data() {
-        return {
-            apiUrl: window.location.origin + '/api',
-            socket: null,
-            loggedIn: false,
-            loginPin: '',
-            loginError: '',
-            connected: false,
-            currentTime: '',
-            currentDate: '',
-            orders: [],
-            activeTab: 'all'
-        };
-    },
-    computed: {
-        activeOrders() {
-            return this.orders.filter(o => ['pending','cooking','ready'].includes(o.status))
-                .sort((a,b) => new Date(a.timestamp) - new Date(b.timestamp));
-        },
-        dineInOrders() { return this.activeOrders.filter(o => o.mode === 'dine-in'); },
-        takeawayOrders() { return this.activeOrders.filter(o => o.mode !== 'dine-in'); },
-        displayOrders() {
-            if (this.activeTab === 'dine-in') return this.dineInOrders;
-            if (this.activeTab === 'takeaway') return this.takeawayOrders;
-            return this.activeOrders;
-        },
-        pendingCount() { return this.activeOrders.filter(o => o.status === 'pending').length; },
-        cookingCount() { return this.activeOrders.filter(o => o.status === 'cooking').length; },
-        readyCount()   { return this.activeOrders.filter(o => o.status === 'ready').length; }
-    },
-    methods: {
-        playBell() {
-            try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                [{f:660,t:0,d:0.2},{f:880,t:0.12,d:0.2},{f:1100,t:0.24,d:0.5}].forEach(({f,t,d}) => {
-                    const osc = ctx.createOscillator(), gain = ctx.createGain();
-                    osc.connect(gain); gain.connect(ctx.destination);
-                    osc.type = 'sine'; osc.frequency.value = f;
-                    const s = ctx.currentTime + t;
-                    gain.gain.setValueAtTime(0.5, s);
-                    gain.gain.exponentialRampToValueAtTime(0.001, s + d);
-                    osc.start(s); osc.stop(s + d);
-                });
-            } catch(e) {}
-        },
-        async login() {
-            if (!this.loginPin || this.loginPin.length !== 4) { this.loginError = 'Enter 4-digit PIN'; return; }
-            try {
-                const res = await fetch(`${this.apiUrl}/login`, {
-                    method: 'POST', headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ pin: this.loginPin })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    this.loggedIn = true; this.loginError = '';
-                    this.connectWebSocket(); this.loadOrders();
-                    setInterval(this.loadOrders, 8000);
-                } else { this.loginError = 'Invalid PIN'; }
-            } catch(e) { this.loginError = 'Cannot connect'; }
-        },
-        connectWebSocket() {
-            this.socket = io(window.location.origin);
-            this.socket.on('connect', () => { this.connected = true; });
-            this.socket.on('disconnect', () => { this.connected = false; });
-            this.socket.on('new_order', (order) => { this.orders.unshift(order); this.playBell(); });
-            this.socket.on('order_updated', (order) => {
-                const idx = this.orders.findIndex(o => o.id === order.id);
-                if (idx !== -1) this.orders.splice(idx, 1, order);
-                else this.orders.unshift(order);
-            });
-        },
-        async loadOrders() {
-            try {
-                const res = await fetch(`${this.apiUrl}/orders?limit=100`);
-                this.orders = await res.json();
-            } catch(e) {}
-        },
-        async updateStatus(orderId, status) {
-            try {
-                await fetch(`${this.apiUrl}/orders/${orderId}/status`, {
-                    method: 'PUT', headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ status, staff_pin: this.loginPin })
-                });
-            } catch(e) {}
-        },
-        getCoursesInOrder(order) {
-            const items = typeof order.items === 'string' ? JSON.parse(order.items) : (order.items || []);
-            const courses = [
-                { name: 'starters', label: '🥗 Starters', items: [] },
-                { name: 'mains',    label: '🍛 Mains',    items: [] },
-                { name: 'desserts', label: '🍮 Desserts',  items: [] },
-                { name: 'drinks',   label: '🥤 Drinks',   items: [] },
-            ];
-            items.forEach(item => {
-                const course = item.course || 'mains';
-                const bucket = courses.find(c => c.name === course) || courses[1];
-                bucket.items.push(item);
-            });
-            return courses;
-        },
-        formatTime(ts) { return new Date(ts).toLocaleTimeString(); },
-        formatElapsed(ts) {
-            const m = Math.floor((Date.now() - new Date(ts)) / 60000);
-            return m < 1 ? 'New' : `${m}m`;
-        },
-        getMinutes(ts) { return Math.floor((Date.now() - new Date(ts)) / 60000); },
-        getTimerClass(ts) {
-            const m = this.getMinutes(ts);
-            if (m > 20) return 'text-red-400';
-            if (m > 12) return 'text-yellow-400';
-            return 'text-green-400';
-        },
-        getOrderBorderClass(order) {
-            if (order.status === 'ready')   return 'border-green-500';
-            if (order.status === 'cooking') return 'border-blue-500';
-            return 'border-yellow-500';
-        },
-        getStatusBadgeClass(status) {
-            if (status === 'pending')  return 'bg-yellow-800 text-yellow-200';
-            if (status === 'cooking')  return 'bg-blue-800 text-blue-200';
-            if (status === 'ready')    return 'bg-green-800 text-green-200';
-            return 'bg-gray-700 text-gray-300';
-        },
-        updateTime() {
-            const now = new Date();
-            this.currentTime = now.toLocaleTimeString();
-            this.currentDate = now.toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' });
-        }
-    },
-    mounted() {
-        this.updateTime();
-        setInterval(this.updateTime, 1000);
+    // Handle POST /api/orders — queue when offline
+    if (event.request.method === 'POST' && url.pathname === '/api/orders') {
+        event.respondWith(handleOrderPost(event.request));
+        return;
     }
-}).mount('#app');
-</script>
-</body>
-</html>
+
+    // For API calls: try network first, fall back to cached response
+    if (url.pathname.startsWith('/api/')) {
+        event.respondWith(
+            fetch(event.request).catch(() => {
+                // Return empty but valid responses for key endpoints
+                if (url.pathname === '/api/menu') {
+                    return getCachedMenu();
+                }
+                if (url.pathname === '/api/dashboard/stats') {
+                    return new Response(JSON.stringify({
+                        today_orders: 0, today_revenue: 0, pending_orders: 0,
+                        cooking_orders: 0, ready_orders: 0, total_customers: 0,
+                        _offline: true
+                    }), { headers: { 'Content-Type': 'application/json' } });
+                }
+                if (url.pathname === '/api/orders') {
+                    return new Response(JSON.stringify([]), {
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                }
+                return new Response(JSON.stringify({ error: 'Offline' }), {
+                    status: 503, headers: { 'Content-Type': 'application/json' }
+                });
+            })
+        );
+        return;
+    }
+
+    // For page/asset requests: cache first, then network
+    event.respondWith(
+        caches.match(event.request).then(cached => {
+            if (cached) return cached;
+            return fetch(event.request).then(response => {
+                // Cache successful GET responses
+                if (response.ok && event.request.method === 'GET') {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+                }
+                return response;
+            }).catch(() => {
+                // Return cached index.html for navigation requests
+                if (event.request.mode === 'navigate') {
+                    return caches.match('/index.html');
+                }
+            });
+        })
+    );
+});
+
+// ===== Handle order POST with offline queue =====
+async function handleOrderPost(request) {
+    const body = await request.clone().json();
+
+    try {
+        // Try to send to server
+        const response = await fetch(request);
+        if (response.ok) {
+            // Success — also try to sync any queued orders
+            syncQueue();
+            return response;
+        }
+        throw new Error('Server error');
+    } catch (err) {
+        // Offline — queue the order locally
+        await queueOrder(body);
+        // Return a fake success so the UI doesn't show an error
+        const fakeOrderNumber = `OFFLINE-${Date.now()}`;
+        return new Response(JSON.stringify({
+            success: true,
+            offline: true,
+            order: {
+                ...body,
+                id: Date.now(),
+                order_number: fakeOrderNumber,
+                status: 'pending',
+                timestamp: new Date().toISOString(),
+                _queued: true
+            }
+        }), { headers: { 'Content-Type': 'application/json' } });
+    }
+}
+
+// ===== Queue management =====
+async function queueOrder(orderData) {
+    const cache = await caches.open(CACHE_NAME);
+    const existing = await cache.match(OFFLINE_QUEUE_KEY);
+    const queue = existing ? await existing.json() : [];
+    queue.push({ ...orderData, _queued_at: Date.now() });
+    await cache.put(OFFLINE_QUEUE_KEY, new Response(JSON.stringify(queue), {
+        headers: { 'Content-Type': 'application/json' }
+    }));
+    console.log(`[SW] Order queued offline. Queue size: ${queue.length}`);
+    // Notify clients
+    const clients = await self.clients.matchAll();
+    clients.forEach(client => client.postMessage({
+        type: 'ORDER_QUEUED',
+        queueSize: queue.length
+    }));
+}
+
+async function syncQueue() {
+    try {
+        const cache = await caches.open(CACHE_NAME);
+        const existing = await cache.match(OFFLINE_QUEUE_KEY);
+        if (!existing) return;
+        const queue = await existing.json();
+        if (!queue.length) return;
+
+        console.log(`[SW] Syncing ${queue.length} queued orders...`);
+        const remaining = [];
+
+        for (const order of queue) {
+            try {
+                const { _queued_at, ...orderData } = order;
+                const r = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(orderData)
+                });
+                if (!r.ok) remaining.push(order);
+                else console.log('[SW] Queued order synced successfully');
+            } catch (e) {
+                remaining.push(order);
+            }
+        }
+
+        // Update queue with any that failed
+        await cache.put(OFFLINE_QUEUE_KEY, new Response(JSON.stringify(remaining), {
+            headers: { 'Content-Type': 'application/json' }
+        }));
+
+        // Notify clients of sync result
+        const clients = await self.clients.matchAll();
+        const synced = queue.length - remaining.length;
+        if (synced > 0) {
+            clients.forEach(client => client.postMessage({
+                type: 'ORDERS_SYNCED',
+                synced,
+                remaining: remaining.length
+            }));
+        }
+    } catch (e) {
+        console.log('[SW] Sync failed:', e);
+    }
+}
+
+// Cache menu for offline use
+async function getCachedMenu() {
+    const cache = await caches.open(CACHE_NAME);
+    const cached = await cache.match('/api/menu');
+    if (cached) return cached.clone();
+    return new Response(JSON.stringify([]), {
+        headers: { 'Content-Type': 'application/json' }
+    });
+}
+
+// Sync when back online
+self.addEventListener('sync', event => {
+    if (event.tag === 'sync-orders') {
+        event.waitUntil(syncQueue());
+    }
+});
+
+// Listen for messages from the app
+self.addEventListener('message', event => {
+    if (event.data.type === 'SYNC_NOW') {
+        syncQueue();
+    }
+    if (event.data.type === 'CACHE_MENU') {
+        caches.open(CACHE_NAME).then(cache => {
+            cache.put('/api/menu', new Response(JSON.stringify(event.data.menu), {
+                headers: { 'Content-Type': 'application/json' }
+            }));
+        });
+    }
+});
