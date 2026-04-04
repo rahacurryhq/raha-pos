@@ -9,6 +9,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const Database = require('better-sqlite3');
 const crypto = require('crypto');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
@@ -20,7 +21,7 @@ const io = socketIo(server, {
 
 app.use(cors());
 app.use(express.json({limit: '50mb'}));
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 const dbPath = process.env.DATABASE_PATH || './raha_pos.db';
 let db;
@@ -712,23 +713,22 @@ app.get('/api/dashboard/stats', (req, res) => {
         const today = new Date().toISOString().split('T')[0];
 
         const stats = {
-            today_orders: db.prepare("SELECT COUNT(*) as c FROM orders WHERE date(timestamp) = ? AND deleted = 0").get(today).c,
-            today_revenue: db.prepare("SELECT COALESCE(SUM(total), 0) as s FROM orders WHERE date(timestamp) = ? AND status != 'cancelled' AND deleted = 0").get(today).s,
+            today_orders: db.prepare('SELECT COUNT(*) as c FROM orders WHERE DATE(timestamp) = ? AND deleted = 0').get(today).c,
+            today_revenue: db.prepare('SELECT COALESCE(SUM(total), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0').get(today).s,
             total_customers: db.prepare('SELECT COUNT(*) as c FROM customers WHERE deleted = 0').get().c,
-            pending_orders: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'pending' AND deleted = 0").get().c,
-            cooking_orders: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'cooking' AND deleted = 0").get().c,
-            ready_orders: db.prepare("SELECT COUNT(*) as c FROM orders WHERE status = 'ready' AND deleted = 0").get().c
+            pending_orders: db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = ? AND deleted = 0').get('pending').c,
+            cooking_orders: db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = ? AND deleted = 0').get('cooking').c,
+            ready_orders: db.prepare('SELECT COUNT(*) as c FROM orders WHERE status = ? AND deleted = 0').get('ready').c
         };
 
         if (role === 'admin') {
-            stats.today_vat = db.prepare("SELECT COALESCE(SUM(vat_amount), 0) as s FROM orders WHERE date(timestamp) = ? AND status != 'cancelled' AND deleted = 0").get(today).s;
-            stats.today_net = db.prepare("SELECT COALESCE(SUM(net_amount), 0) as s FROM orders WHERE date(timestamp) = ? AND status != 'cancelled' AND deleted = 0").get(today).s;
+            stats.today_vat = db.prepare('SELECT COALESCE(SUM(vat_amount), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0').get(today).s;
+            stats.today_net = db.prepare('SELECT COALESCE(SUM(net_amount), 0) as s FROM orders WHERE DATE(timestamp) = ? AND status != "cancelled" AND deleted = 0').get(today).s;
         }
 
         res.json(stats);
     } catch (err) {
-        console.error('Dashboard stats error:', err);
-        res.status(500).json({ error: 'Failed', message: err.message });
+        res.status(500).json({ error: 'Failed' });
     }
 });
 
