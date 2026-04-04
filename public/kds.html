@@ -38,7 +38,7 @@
                 <button @click="login" class="w-full bg-orange-600 text-white py-3 rounded-lg font-bold text-lg hover:bg-orange-700 transition">
                     <i class="fas fa-sign-in-alt mr-2"></i>Start Kitchen Display
                 </button>
-                <p class="text-center text-gray-500 text-sm mt-4">Default Chef PIN: 1111</p>
+                <p v-if="loginError" class="text-center text-red-400 text-sm mt-4">{{ loginError }}</p>
             </div>
         </div>
 
@@ -165,6 +165,7 @@
                     socket: null,
                     loggedIn: false,
                     loginPin: '',
+                    loginError: '',
                     connected: false,
                     currentTime: '',
                     currentDate: '',
@@ -191,14 +192,48 @@
             },
 
             methods: {
-                login() {
-                    // Simple chef login
-                    if (this.loginPin === '1111' || this.loginPin === '9999' || this.loginPin === '2222') {
-                        this.loggedIn = true;
-                        this.connectWebSocket();
-                        this.loadOrders();
-                    } else {
-                        alert('Invalid PIN. Chef PIN is 1111');
+                playBell() {
+                    try {
+                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                        [{ f: 660, t: 0, d: 0.2 }, { f: 880, t: 0.12, d: 0.2 }, { f: 1100, t: 0.24, d: 0.5 }]
+                            .forEach(({ f, t, d }) => {
+                                const osc = ctx.createOscillator();
+                                const gain = ctx.createGain();
+                                osc.connect(gain);
+                                gain.connect(ctx.destination);
+                                osc.type = 'sine';
+                                osc.frequency.value = f;
+                                const s = ctx.currentTime + t;
+                                gain.gain.setValueAtTime(0.5, s);
+                                gain.gain.exponentialRampToValueAtTime(0.001, s + d);
+                                osc.start(s);
+                                osc.stop(s + d);
+                            });
+                    } catch(e) {}
+                },
+
+                async login() {
+                    if (!this.loginPin || this.loginPin.length !== 4) {
+                        this.loginError = 'Please enter 4-digit PIN';
+                        return;
+                    }
+                    try {
+                        const res = await fetch(`${this.apiUrl}/login`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ pin: this.loginPin })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            this.loggedIn = true;
+                            this.loginError = '';
+                            this.connectWebSocket();
+                            this.loadOrders();
+                        } else {
+                            this.loginError = 'Invalid PIN. Please try again.';
+                        }
+                    } catch(err) {
+                        this.loginError = 'Cannot connect to server';
                     }
                 },
 
@@ -215,13 +250,15 @@
 
                     this.socket.on('new_order', (order) => {
                         this.orders.unshift(order);
-                        this.playNewOrderSound();
+                        this.playBell();
                     });
 
                     this.socket.on('order_updated', (order) => {
                         const idx = this.orders.findIndex(o => o.id === order.id);
                         if (idx !== -1) {
-                            this.orders[idx] = order;
+                            this.orders.splice(idx, 1, order); // splice triggers Vue reactivity
+                        } else {
+                            this.orders.unshift(order);
                         }
                     });
                 },
@@ -281,14 +318,6 @@
                     if (order.status === 'cooking') return 'border-blue-500';
                     if (order.status === 'ready') return 'border-green-500';
                     return 'border-gray-600';
-                },
-
-                playNewOrderSound() {
-                    try {
-                        this.$refs.newOrderSound.play();
-                    } catch (err) {
-                        console.log('Could not play sound:', err);
-                    }
                 },
 
                 updateTime() {
