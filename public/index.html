@@ -135,7 +135,7 @@
                             <i class="fas fa-percent text-3xl mb-2"></i>
                             <p class="font-bold">VAT Reports</p>
                         </button>
-                        <button @click="view = 'dashboard'" class="bg-gradient-to-br from-gray-500 to-gray-600 text-white p-6 rounded-lg hover:shadow-lg transition">
+                        <button @click="view = 'dashboard'; loadOrders(); loadStats();" class="bg-gradient-to-br from-gray-500 to-gray-600 text-white p-6 rounded-lg hover:shadow-lg transition">
                             <i class="fas fa-home text-3xl mb-2"></i>
                             <p class="font-bold">Dashboard</p>
                         </button>
@@ -631,7 +631,7 @@
                     this.socket.on('order_updated', (order) => {
                         const idx = this.recentOrders.findIndex(o => o.id === order.id);
                         if (idx !== -1) {
-                            this.recentOrders[idx] = order;
+                            this.recentOrders.splice(idx, 1, order);
                         }
                         this.loadStats();
                     });
@@ -884,6 +884,14 @@
                 this.updateTime();
                 setInterval(this.updateTime, 1000);
                 
+                // Auto-refresh orders and stats every 10 seconds
+                setInterval(() => {
+                    if (this.user) {
+                        this.loadOrders();
+                        this.loadStats();
+                    }
+                }, 10000);
+
                 // Try to connect
                 fetch(`${this.apiUrl}/health`)
                     .then(() => this.connectionStatus = 'connected')
