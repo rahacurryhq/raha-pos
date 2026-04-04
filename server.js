@@ -418,7 +418,7 @@ app.post('/api/login', (req, res) => {
             loginTime: Date.now()
         });
 
-        db.prepare('UPDATE users SET last_login = datetime("now") WHERE id = ?').run(user.id);
+        db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(user.id);
         db.prepare('INSERT INTO staff_activity (user_id, staff_name, action, ip_address) VALUES (?, ?, ?, ?)')
             .run(user.id, user.name, 'login', req.ip);
 
