@@ -276,8 +276,14 @@ function initDatabase() {
         const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
         if (userCount.count === 0) insertDefaultUsers();
 
-        const menuCount = db.prepare('SELECT COUNT(*) as count FROM menu_items WHERE deleted = 0').get();
-        if (menuCount.count === 0) insertFullMenu();
+        // Menu versioning — if menu version is not v4 (Raha real menu), reseed
+        const menuVersion = db.prepare("SELECT value FROM settings WHERE key='menu_version'").get();
+        if (!menuVersion || menuVersion.value !== 'v4_raha') {
+            console.log('🔄 Updating menu to Raha v4 (real menu)...');
+            db.prepare('UPDATE menu_items SET deleted=1').run(); // soft-delete all old items
+            insertFullMenu();
+            db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('menu_version','v4_raha',datetime('now'))").run();
+        }
 
         console.log('✓ Database initialized');
         return true;
@@ -304,75 +310,176 @@ function insertDefaultUsers() {
 
 function insertFullMenu() {
     const menu = [
-        // STARTERS
-        { name: 'Vegetable Samosa (2pc)', course: 'starters', cat: 'Starters', price: 4.95, desc: 'Crispy pastry with spiced vegetables', allergens: 'Gluten' },
-        { name: 'Chicken Samosa (2pc)', course: 'starters', cat: 'Starters', price: 5.95, desc: 'Pastry filled with spiced chicken', allergens: 'Gluten' },
-        { name: 'Onion Bhaji (4pc)', course: 'starters', cat: 'Starters', price: 5.95, desc: 'Spiced onion fritters', allergens: 'Gluten' },
-        { name: 'Chicken Pakora', course: 'starters', cat: 'Starters', price: 6.95, desc: 'Spiced chicken bites', allergens: 'Gluten' },
-        { name: 'Chicken Wings (6pc)', course: 'starters', cat: 'Starters', price: 7.95, desc: 'Tandoori marinated wings', allergens: 'None' },
-        { name: 'Chicken Tikka Starter', course: 'starters', cat: 'Starters', price: 7.95, desc: 'Tandoori chicken pieces', allergens: 'Dairy' },
-        { name: 'Seekh Kebab Starter', course: 'starters', cat: 'Starters', price: 7.95, desc: 'Spiced lamb kebabs', allergens: 'None' },
-        { name: 'Mixed Platter', course: 'starters', cat: 'Starters', price: 12.95, desc: 'Samosa, pakora, wings & kebab', allergens: 'Gluten,Dairy' },
-        { name: 'Prawn Puri', course: 'starters', cat: 'Starters', price: 8.95, desc: 'Spiced prawns on puri bread', allergens: 'Gluten,Shellfish' },
-        { name: 'Tandoori Mushrooms', course: 'starters', cat: 'Starters', price: 6.95, desc: 'Spiced mushrooms', allergens: 'Dairy' },
-        // MAINS - Chicken
-        { name: 'Butter Chicken', course: 'mains', cat: 'Curry-Chicken', price: 15.95, desc: 'Creamy tomato curry', allergens: 'Dairy,Nuts' },
-        { name: 'Chicken Tikka Masala', course: 'mains', cat: 'Curry-Chicken', price: 14.95, desc: 'Classic tikka masala', allergens: 'Dairy' },
-        { name: 'Chicken Korma', course: 'mains', cat: 'Curry-Chicken', price: 14.95, desc: 'Mild coconut curry', allergens: 'Dairy,Nuts' },
-        { name: 'Chicken Madras', course: 'mains', cat: 'Curry-Chicken', price: 14.95, desc: 'Hot & spicy curry', allergens: 'None' },
-        { name: 'Chicken Vindaloo', course: 'mains', cat: 'Curry-Chicken', price: 14.95, desc: 'Very hot curry', allergens: 'None' },
-        { name: 'Chicken Jalfrezi', course: 'mains', cat: 'Curry-Chicken', price: 14.95, desc: 'Stir-fry with peppers', allergens: 'None' },
-        { name: 'Chicken Balti', course: 'mains', cat: 'Curry-Chicken', price: 14.95, desc: 'Medium spiced curry', allergens: 'None' },
-        { name: 'Chicken Bhuna', course: 'mains', cat: 'Curry-Chicken', price: 14.95, desc: 'Thick sauce curry', allergens: 'None' },
-        { name: 'Chicken Saag', course: 'mains', cat: 'Curry-Chicken', price: 14.95, desc: 'Spinach curry', allergens: 'Dairy' },
-        { name: 'Chicken Rogan Josh', course: 'mains', cat: 'Curry-Chicken', price: 14.95, desc: 'Kashmiri curry', allergens: 'None' },
-        // MAINS - Lamb
-        { name: 'Lamb Rogan Josh', course: 'mains', cat: 'Curry-Lamb', price: 16.95, desc: 'Kashmiri lamb curry', allergens: 'None' },
-        { name: 'Lamb Korma', course: 'mains', cat: 'Curry-Lamb', price: 16.95, desc: 'Mild coconut lamb curry', allergens: 'Dairy,Nuts' },
-        { name: 'Lamb Madras', course: 'mains', cat: 'Curry-Lamb', price: 16.95, desc: 'Hot lamb curry', allergens: 'None' },
-        { name: 'Lamb Vindaloo', course: 'mains', cat: 'Curry-Lamb', price: 16.95, desc: 'Very hot lamb curry', allergens: 'None' },
-        { name: 'Lamb Saag', course: 'mains', cat: 'Curry-Lamb', price: 16.95, desc: 'Lamb with spinach', allergens: 'Dairy' },
-        { name: 'Lamb Jalfrezi', course: 'mains', cat: 'Curry-Lamb', price: 16.95, desc: 'Lamb stir-fry', allergens: 'None' },
-        // MAINS - Vegetarian
-        { name: 'Vegetable Korma', course: 'mains', cat: 'Vegetarian', price: 12.95, desc: 'Mild veg curry', allergens: 'Dairy,Nuts' },
-        { name: 'Chana Masala', course: 'mains', cat: 'Vegetarian', price: 11.95, desc: 'Chickpea curry', allergens: 'None' },
-        { name: 'Saag Paneer', course: 'mains', cat: 'Vegetarian', price: 12.95, desc: 'Spinach with cheese', allergens: 'Dairy' },
-        { name: 'Dal Makhani', course: 'mains', cat: 'Vegetarian', price: 11.95, desc: 'Black lentil curry', allergens: 'Dairy' },
-        { name: 'Paneer Tikka Masala', course: 'mains', cat: 'Vegetarian', price: 13.95, desc: 'Cheese tikka masala', allergens: 'Dairy' },
-        // MAINS - Rice & Bread sides
-        { name: 'Pilau Rice', course: 'mains', cat: 'Rice', price: 3.95, desc: 'Basmati rice', allergens: 'None' },
-        { name: 'Boiled Rice', course: 'mains', cat: 'Rice', price: 3.50, desc: 'Plain basmati', allergens: 'None' },
-        { name: 'Egg Fried Rice', course: 'mains', cat: 'Rice', price: 4.50, desc: 'Rice with egg', allergens: 'Eggs' },
-        { name: 'Chicken Biryani', course: 'mains', cat: 'Rice', price: 14.95, desc: 'Layered chicken rice', allergens: 'Dairy' },
-        { name: 'Lamb Biryani', course: 'mains', cat: 'Rice', price: 16.95, desc: 'Layered lamb rice', allergens: 'Dairy' },
-        { name: 'Plain Naan', course: 'mains', cat: 'Bread', price: 2.95, desc: 'Traditional naan', allergens: 'Gluten,Dairy' },
-        { name: 'Garlic Naan', course: 'mains', cat: 'Bread', price: 3.50, desc: 'Garlic butter naan', allergens: 'Gluten,Dairy' },
-        { name: 'Peshwari Naan', course: 'mains', cat: 'Bread', price: 3.95, desc: 'Sweet coconut naan', allergens: 'Gluten,Dairy,Nuts' },
-        { name: 'Keema Naan', course: 'mains', cat: 'Bread', price: 4.50, desc: 'Spiced lamb naan', allergens: 'Gluten,Dairy' },
-        { name: 'Chips', course: 'mains', cat: 'Sides', price: 3.50, desc: 'Fresh cut chips', allergens: 'None' },
-        { name: 'Raita', course: 'mains', cat: 'Sides', price: 2.95, desc: 'Yogurt dip', allergens: 'Dairy' },
-        { name: 'Bombay Potatoes', course: 'mains', cat: 'Sides', price: 4.50, desc: 'Spiced potatoes', allergens: 'None' },
-        { name: 'Saag Aloo', course: 'mains', cat: 'Sides', price: 4.95, desc: 'Spinach & potato', allergens: 'None' },
-        // DESSERTS
-        { name: 'Gulab Jamun', course: 'desserts', cat: 'Desserts', price: 4.95, desc: 'Soft milk dumplings in syrup', allergens: 'Dairy,Gluten' },
-        { name: 'Kulfi Ice Cream', course: 'desserts', cat: 'Desserts', price: 4.95, desc: 'Traditional Indian ice cream', allergens: 'Dairy,Nuts' },
-        { name: 'Mango Sorbet', course: 'desserts', cat: 'Desserts', price: 4.50, desc: 'Refreshing mango sorbet', allergens: 'None' },
-        { name: 'Rice Pudding (Kheer)', course: 'desserts', cat: 'Desserts', price: 4.95, desc: 'Creamy rice pudding', allergens: 'Dairy,Nuts' },
-        { name: 'Chocolate Brownie', course: 'desserts', cat: 'Desserts', price: 5.50, desc: 'With vanilla ice cream', allergens: 'Dairy,Gluten,Eggs' },
-        // DRINKS
-        { name: 'Mango Lassi', course: 'drinks', cat: 'Drinks', price: 3.50, desc: 'Yogurt mango drink', allergens: 'Dairy' },
-        { name: 'Rose Lassi', course: 'drinks', cat: 'Drinks', price: 3.50, desc: 'Rose flavoured lassi', allergens: 'Dairy' },
-        { name: 'Masala Chai', course: 'drinks', cat: 'Drinks', price: 2.95, desc: 'Spiced Indian tea', allergens: 'Dairy' },
-        { name: 'Coke 330ml', course: 'drinks', cat: 'Drinks', price: 2.50, desc: 'Can', allergens: 'None' },
-        { name: 'Diet Coke 330ml', course: 'drinks', cat: 'Drinks', price: 2.50, desc: 'Can', allergens: 'None' },
-        { name: '7Up 330ml', course: 'drinks', cat: 'Drinks', price: 2.50, desc: 'Can', allergens: 'None' },
-        { name: 'Still Water 500ml', course: 'drinks', cat: 'Drinks', price: 2.00, desc: 'Bottled water', allergens: 'None' },
-        { name: 'Sparkling Water 500ml', course: 'drinks', cat: 'Drinks', price: 2.00, desc: 'Sparkling water', allergens: 'None' },
-        { name: 'Orange Juice', course: 'drinks', cat: 'Drinks', price: 2.95, desc: 'Fresh juice', allergens: 'None' },
+        // ===== APPETISERS - STARTERS =====
+        { name: 'Bhelupuri', course: 'starters', cat: 'Street Classics', price: 6.95, desc: 'Crispy puffed rice tossed with sweet tamarind chutney and spicy green chutney. A popular appetiser from Mumbai.', allergens: 'Gluten,Peanuts,Sesame' },
+        { name: 'Onion Bhaji', course: 'starters', cat: 'Street Classics', price: 6.95, desc: 'Chopped onions battered in gram flour and spices, deep fried until golden crisp. Served with homemade chutney.', allergens: 'Gluten' },
+        { name: 'Aloo Tikki Chaat', course: 'starters', cat: 'Street Classics', price: 7.55, desc: 'Crispy Irish potato patties made with boiled potatoes, split chickpea lentils, and ground spices.', allergens: 'Gluten,Egg,Peanuts,Milk,Mustard' },
+        { name: 'Punjabi Samosa', course: 'starters', cat: 'Street Classics', price: 7.55, desc: 'Triangular-shaped flaky pastry stuffed with Irish potatoes, peas and herbs.', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Beetroot Cheese Balls', course: 'starters', cat: 'Street Classics', price: 8.55, desc: 'Crispy cheesy beetroot and potato balls seasoned with spices, served with cashew, coconut and saffron sauce.', allergens: 'Gluten,Egg,Milk,Cashew' },
+        { name: 'Murgh Malai Tikka', course: 'starters', cat: "Chef's Signatures", price: 8.95, desc: 'Tender creamy boneless chicken marinated in yogurt and spices, grilled to perfection in a tandoor.', allergens: 'Egg,Milk,Cashew' },
+        { name: 'Trio Chicken Tikka Basket', course: 'starters', cat: "Chef's Signatures", price: 9.95, desc: 'Three chicken marinades: bold turmeric & chili, on-the-bone tandoori tikka, and rich yogurt & cream — all grilled to perfection.', allergens: 'Gluten,Egg,Milk,Cashew' },
+        { name: 'Seekh Kebab', course: 'starters', cat: 'From the Tandoor', price: 9.50, desc: 'Minced lamb mixed with spices, wrapped around a skewer and grilled in tandoor until melt in mouth.', allergens: 'Egg,Milk' },
+        { name: 'Amritsari Fish Pakora', course: 'starters', cat: 'Seafood', price: 9.95, desc: 'Lightly battered fish fry seasoned with gram flour, spices, ginger and garlic paste. A crunchy refreshing treat.', allergens: 'Gluten,Fish,Egg' },
+        { name: 'Lehsuni Jhinga', course: 'starters', cat: 'Seafood', price: 12.95, desc: 'Grilled king prawns prepared in a tangy marination of chopped garlic, lime juice and spices.', allergens: 'Crustaceans,Egg,Peanuts,Milk,Mustard' },
+        { name: 'Raha Vegetarian Platter (for 2)', course: 'starters', cat: 'Sharing Platters', price: 14.95, desc: 'Onion Bhaji, Vegetable Samosa, Aloo Tikki and Beetroot Cheese Balls. Perfect for sharing.', allergens: 'Gluten,Egg,Milk,Mustard' },
+        { name: 'Raha Special Platter (for 2)', course: 'starters', cat: 'Sharing Platters', price: 16.95, desc: 'Chicken tikkas, Seekh Kebab, Onion Bhaji & Aloo Tikki. A crowd favourite.', allergens: 'Crustaceans,Egg,Milk,Mustard' },
+
+        // ===== MAINS - CHEF SPECIALS =====
+        { name: 'Raha Butter Chicken', course: 'mains', cat: "Chef's Special", price: 21.95, desc: 'A comforting Delhi delicacy. Chicken marinated in yogurt and spices cooked in a creamy tomato-based sauce.', allergens: 'Milk,Cashew' },
+        { name: 'Chicken Jalfrezi', course: 'mains', cat: "Chef's Special", price: 21.95, desc: 'Stir-fried marinated chicken with bell peppers, onions, tomatoes, and green chilies.', allergens: 'Milk,Cashew' },
+        { name: 'Lamb Shank', course: 'mains', cat: "Chef's Special", price: 25.95, desc: 'Succulent slow-cooked lamb shank in tomato sauce with ginger, garlic and special garam masala. Mughlai cuisine.', allergens: 'Milk' },
+        { name: 'Raan E Sikandari', course: 'mains', cat: "Chef's Special", price: 22.95, desc: '"Feast from the East" — Slow roasted Irish lamb marinated overnight, served in an aromatic sauce.', allergens: 'Milk' },
+        { name: 'Mango Chilli Prawns', course: 'mains', cat: "Chef's Special", price: 22.95, desc: 'King prawns cooked with crushed chillies, coconut & spiced mango marmalade.', allergens: 'Crustaceans,Milk,Cashew' },
+        { name: 'Goan Prawn / Fish Curry', course: 'mains', cat: "Chef's Special", price: 23.95, desc: 'Aromatic king prawn or tilapia fish curry with tamarind, spices, garlic, ginger, onion, tomato and coconut.', allergens: 'Crustaceans,Fish,Milk,Mustard' },
+        { name: 'Jhinga Moilee', course: 'mains', cat: "Chef's Special", price: 23.95, desc: 'Fragrant, rich and creamy curry tempered with coconut milk and packed with succulent king prawns.', allergens: 'Crustaceans,Milk,Mustard' },
+
+        // ===== MAINS - ALL TIME FAVOURITES =====
+        { name: 'Raha Korma (Veg)', course: 'mains', cat: 'All-Time Favourites', price: 18.95, desc: 'Cooked in creamy cashew nuts with saffron & very mild spices.', allergens: 'Milk,Cashew' },
+        { name: 'Raha Korma (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: 'Chicken cooked in creamy cashew nuts with saffron & very mild spices.', allergens: 'Milk,Cashew' },
+        { name: 'Raha Korma (Lamb)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: 'Irish lamb cooked in creamy cashew nuts with saffron & very mild spices.', allergens: 'Milk,Cashew' },
+        { name: 'Raha Korma (Prawns)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: 'King prawns cooked in creamy cashew nuts with saffron & very mild spices.', allergens: 'Crustaceans,Milk,Cashew' },
+        { name: 'Tikka Masala (Veg)', course: 'mains', cat: 'All-Time Favourites', price: 18.95, desc: 'Tomato and cream-based sauce with a lot of spices. Slightly spicy and earthy.', allergens: 'Milk,Cashew' },
+        { name: 'Tikka Masala (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: 'Chicken in tomato and cream-based sauce with a lot of spices. Slightly spicy and earthy.', allergens: 'Milk,Cashew' },
+        { name: 'Tikka Masala (Lamb)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: 'Irish lamb in tomato and cream-based sauce with a lot of spices. Slightly spicy and earthy.', allergens: 'Milk,Cashew' },
+        { name: 'Tikka Masala (Prawns)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: 'King prawns in tomato and cream-based sauce with a lot of spices.', allergens: 'Crustaceans,Milk,Cashew' },
+        { name: 'Bhuna (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: "Grandma's Bhuna Pot — Bengali speciality, spices fried at high temperature then meat simmered in its own juices.", allergens: 'Milk,Cashew' },
+        { name: 'Bhuna (Lamb)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: "Grandma's Bhuna Pot — Bengali speciality with Irish lamb, spices fried at high temperature.", allergens: 'Milk,Cashew' },
+        { name: 'Saag (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: 'Mixture of leafy greens — spinach, mustard, methi leaves — cooked in mild spices with chicken.', allergens: 'Milk,Cashew,Mustard' },
+        { name: 'Saag (Lamb)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: 'Mixture of leafy greens — spinach, mustard, methi leaves — cooked in mild spices with Irish lamb.', allergens: 'Milk,Cashew,Mustard' },
+        { name: 'Kadhai (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: 'Smoky and slightly charred flavour. Recommended with chicken. Freshly ground spices.', allergens: 'Milk,Cashew' },
+        { name: 'Rogan Josh (Lamb)', course: 'mains', cat: 'All-Time Favourites', price: 22.95, desc: 'Rich curry flavoured with clarified butter and aromatic spices. Highly recommended with lamb.', allergens: 'Milk' },
+        { name: 'Garlic Chilli (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: 'Sauce made with fresh peppers and garlic. Can be mild or spicy just the way you want it.', allergens: 'Milk,Cashew' },
+        { name: 'Madras (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: 'Rich and flavourful curry sauce from Chennai. Coriander, cumin, turmeric and chilli powder.', allergens: 'Milk,Cashew,Mustard' },
+        { name: 'Vindaloo (Chicken)', course: 'mains', cat: 'All-Time Favourites', price: 20.95, desc: 'Spicy, tangy sauce from Goa. The spiciest option at Raha. Spices with coconut and red chilies.', allergens: 'Milk,Cashew,Mustard' },
+
+        // ===== MAINS - VEGETARIAN =====
+        { name: 'Mix Vegetable Curry', course: 'mains', cat: 'Vegetarian', price: 17.95, desc: 'Colourful combination of various vegetables cooked in a rich and flavourful curry sauce.', allergens: 'Milk,Cashew' },
+        { name: 'Malai Kofta', course: 'mains', cat: 'Vegetarian', price: 19.95, desc: 'Fried balls of potato, cheese, and mixed veggies in a creamy sauce of blended nuts, onions, tomatoes and fragrant spices.', allergens: 'Gluten,Milk,Cashew' },
+        { name: 'Chana Masala', course: 'mains', cat: 'Vegetarian', price: 18.95, desc: 'Chickpeas cooked in a tangy and spicy sauce with ginger, garlic, green chilies, and a mix of Indian spices.', allergens: 'Milk,Cashew' },
+        { name: 'Saag Paneer', course: 'mains', cat: 'Vegetarian', price: 20.95, desc: 'Blended spinach with spices, onions, tomatoes, ginger, and garlic — a velvety smooth sauce with paneer.', allergens: 'Milk,Cashew,Mustard' },
+        { name: 'Kadhai Paneer', course: 'mains', cat: 'Vegetarian', price: 20.95, desc: 'Cottage cheese sautéed with bell peppers, onions, and tomatoes in a rich aromatic gravy. Bold and smoky.', allergens: 'Milk,Cashew,Mustard' },
+        { name: 'Daal Tarka', course: 'mains', cat: 'Vegetarian', price: 17.95, desc: 'Comforting lentil dish made from a combination of lentils, cooked with tomatoes, onions, and a blend of spices.', allergens: 'Milk' },
+        { name: 'Bhindi Masala', course: 'mains', cat: 'Vegetarian', price: 18.95, desc: 'Okra sautéed in a spicy blend of onions, tomatoes, and Indian spices.', allergens: 'Milk,Cashew' },
+
+        // ===== MAINS - BIRYANI =====
+        { name: 'Vegetable Biryani', course: 'mains', cat: 'Biryani', price: 19.95, desc: 'Long-grain basmati rice with aromatic spices — saffron, mint and dried herbs — with vegetables. Chef recommends adding raita.', allergens: 'Milk,Cashew' },
+        { name: 'Chicken Biryani', course: 'mains', cat: 'Biryani', price: 21.95, desc: 'Long-grain basmati rice with aromatic spices — saffron, mint and dried herbs — with chicken. Chef recommends adding raita.', allergens: 'Milk,Cashew' },
+        { name: 'Lamb Biryani', course: 'mains', cat: 'Biryani', price: 22.95, desc: 'Long-grain basmati rice with aromatic spices — saffron, mint and dried herbs — with Irish lamb. Chef recommends adding raita.', allergens: 'Milk,Cashew' },
+        { name: 'Prawn Biryani', course: 'mains', cat: 'Biryani', price: 22.95, desc: 'Long-grain basmati rice with aromatic spices — saffron, mint and dried herbs — with king prawns.', allergens: 'Crustaceans,Milk,Cashew' },
+
+        // ===== MAINS - TANDOOR =====
+        { name: 'Paneer Tikka Achari', course: 'mains', cat: 'Tandoor Speciality', price: 20.95, desc: 'Homemade Indian cottage cheese with pickle spices grilled in a traditional clay oven. Served with curry sauce.', allergens: 'Egg,Milk,Cashew,Mustard' },
+        { name: 'Tandoori Chicken', course: 'mains', cat: 'Tandoor Speciality', price: 20.95, desc: 'Chicken on the bone marinated in yogurt & spices, cooked on a slow fire in tandoor. Served with curry sauce.', allergens: 'Egg,Milk,Cashew,Mustard' },
+        { name: 'Shaslik Chicken', course: 'mains', cat: 'Tandoor Speciality', price: 20.95, desc: 'Chicken tikka sautéed with onions & peppers. Served with curry sauce.', allergens: 'Egg,Milk,Cashew,Mustard' },
+
+        // ===== SIDES =====
+        { name: 'Aloo Jeera', course: 'mains', cat: 'Sides', price: 8.95, desc: 'Irish potatoes and cumin seeds sautéed with turmeric, coriander, and chilli powder.', allergens: 'Milk' },
+        { name: 'Bombay Aloo', course: 'mains', cat: 'Sides', price: 9.95, desc: 'Boiled potatoes sautéed with onions, tomatoes and a blend of Indian spices. From the streets of Mumbai.', allergens: 'Milk,Cashew' },
+        { name: 'Aloo Gobhi', course: 'mains', cat: 'Sides', price: 9.95, desc: 'Classic North Indian dish with potatoes and cauliflower with mild spices.', allergens: 'Milk,Cashew' },
+        { name: 'Honey Chilli Chips', course: 'mains', cat: 'Sides', price: 7.95, desc: 'Crispy chips tossed in sweet and spicy honey chilli sauce, garnished with sesame seeds and spring onions.', allergens: 'Milk,Mustard,Sesame' },
+        { name: 'Chips', course: 'mains', cat: 'Sides', price: 4.95, desc: 'Fresh cut chips.', allergens: 'None' },
+        { name: 'Mixed Raita', course: 'mains', cat: 'Sides', price: 4.95, desc: "Chef's recommendation — perfect with biryani.", allergens: 'Milk' },
+        { name: 'Pappadums & Dips', course: 'mains', cat: 'Sides', price: 3.50, desc: 'Served with mango, coconut and tomato dips.', allergens: 'Gluten' },
+        { name: 'Mixed Salad', course: 'mains', cat: 'Sides', price: 5.50, desc: 'Fresh mixed salad.', allergens: 'None' },
+
+        // ===== RICE =====
+        { name: 'Steamed Rice', course: 'mains', cat: 'Rice', price: 3.00, desc: 'Plain basmati rice.', allergens: 'None' },
+        { name: 'Pilau Rice', course: 'mains', cat: 'Rice', price: 3.50, desc: 'Basmati rice flavoured with saffron and cardamom.', allergens: 'None' },
+        { name: 'Garden Rice', course: 'mains', cat: 'Rice', price: 4.50, desc: 'Flavoured with fresh coriander, mint and spices.', allergens: 'None' },
+        { name: 'Lemon Rice', course: 'mains', cat: 'Rice', price: 4.50, desc: 'Rice cooked in lemon pulp and mustard seed.', allergens: 'Mustard' },
+        { name: 'Egg Fried Rice', course: 'mains', cat: 'Rice', price: 4.50, desc: 'With eggs, spring onions and fresh coriander.', allergens: 'Egg,Soya' },
+
+        // ===== BREAD =====
+        { name: 'Plain Naan', course: 'mains', cat: 'Naan Bread', price: 3.50, desc: 'Traditional tandoor baked naan.', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Garlic Naan', course: 'mains', cat: 'Naan Bread', price: 4.50, desc: 'Garlic butter naan, baked in tandoor.', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Garlic Coriander Naan', course: 'mains', cat: 'Naan Bread', price: 4.50, desc: 'Garlic and fresh coriander naan.', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Garlic Chilli Naan', course: 'mains', cat: 'Naan Bread', price: 4.75, desc: 'Garlic and chilli naan with a kick.', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Peshwari Naan', course: 'mains', cat: 'Naan Bread', price: 5.50, desc: 'Sweet stuffing of coconut, cashew nut and raisins.', allergens: 'Gluten,Egg,Milk,Cashew' },
+        { name: 'Keema Naan', course: 'mains', cat: 'Naan Bread', price: 5.95, desc: 'Stuffed with minced lamb.', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Whole Wheat Roti', course: 'mains', cat: 'Naan Bread', price: 3.00, desc: 'Whole wheat flatbread.', allergens: 'Gluten,Milk' },
+
+        // ===== KIDS MENU =====
+        { name: 'Chicken Nuggets & Chips', course: 'mains', cat: "Kids Menu", price: 11.95, desc: 'Kids chicken nuggets with chips.', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Kids Tikka Masala / Korma', course: 'mains', cat: "Kids Menu", price: 12.95, desc: 'Kids portion of chicken tikka masala or korma.', allergens: 'Milk,Cashew' },
+
+        // ===== DESSERTS =====
+        { name: 'Gulab Jamun', course: 'desserts', cat: 'Desserts', price: 6.95, desc: 'Deep-fried sweetened dough balls soaked in rose water, sugar and cardamom syrup.', allergens: 'Gluten,Milk,Pistachio' },
+        { name: 'Death By Chocolate Cake', course: 'desserts', cat: 'Desserts', price: 7.95, desc: 'Layers of rich velvety chocolate cake, decadent ganache, and luscious frosting. A chocoholic's dream!', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Cheesecake of the Day', course: 'desserts', cat: 'Desserts', price: 7.95, desc: 'Creamy, zesty cheesecake on a buttery crust, served with ice cream. Ask your server for today's flavour.', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Pistachio Kulfi', course: 'desserts', cat: 'Desserts', price: 6.95, desc: 'Rich creamy Indian frozen dessert made with milk and finely ground pistachios, infused with cardamom.', allergens: 'Milk,Pistachio' },
+        { name: 'Mango Kulfi', course: 'desserts', cat: 'Desserts', price: 6.95, desc: 'Rich creamy Indian frozen dessert made with refreshing mango, infused with cardamom.', allergens: 'Milk,Pistachio' },
+        { name: 'Chocolate Brownie', course: 'desserts', cat: 'Desserts', price: 7.95, desc: 'Rich and fudgy chocolate dessert with a soft chewy centre. Served with vanilla ice cream.', allergens: 'Gluten,Egg,Milk' },
+        { name: 'Affogato', course: 'desserts', cat: 'Desserts', price: 6.95, desc: 'Smooth vanilla ice cream topped with hot espresso, garnished with caramel toffee pieces.', allergens: 'Milk' },
+        { name: 'Carrot Cake', course: 'desserts', cat: 'Desserts', price: 7.95, desc: 'Moist carrot cake with warm spices and vanilla, topped with rich cream cheese frosting.', allergens: 'Gluten,Egg,Milk,Walnut' },
+
+        // ===== DRINKS =====
+        // Cocktails
+        { name: 'Mojito', course: 'drinks', cat: 'Cocktails', price: 7.00, desc: 'Fresh lime, mint leaves, and dry Prosecco — a refreshing effervescent twist on the classic mojito.', allergens: 'None' },
+        { name: 'Aperol Spritz', course: 'drinks', cat: 'Cocktails', price: 7.00, desc: 'Aperol, dry Prosecco, and soda, garnished with orange. Crisp and vibrant Italian cocktail.', allergens: 'None' },
+        { name: 'Bellini', course: 'drinks', cat: 'Cocktails', price: 7.00, desc: 'Delightful blend of Prosecco and peach purée. Refreshing, fruity, and perfect for any celebration.', allergens: 'None' },
+        { name: 'Espresso Martini', course: 'drinks', cat: 'Cocktails', price: 7.00, desc: 'Bold and smooth mix of vodka, coffee liqueur, and freshly brewed espresso. For coffee lovers.', allergens: 'None' },
+        { name: 'Passiontini', course: 'drinks', cat: 'Cocktails', price: 7.00, desc: 'Tropical passion fruit, zesty lime, and simple syrup, topped with sparkling prosecco and soda.', allergens: 'None' },
+        { name: 'RAHA Bliss', course: 'drinks', cat: 'Cocktails', price: 7.00, desc: 'Blue Curaçao and sparkling prosecco — a mesmerizing blue hue cocktail.', allergens: 'None' },
+        { name: 'Baby Guinness Shot', course: 'drinks', cat: 'Cocktails', price: 5.50, desc: 'The perfect sweet finish after a hearty meal. Looks like a pint, goes down like a dream!', allergens: 'None' },
+        // Beer
+        { name: 'Premium Cobra Draught', course: 'drinks', cat: 'Beer', price: 6.50, desc: 'Premium Indian lager draught.', allergens: 'Gluten' },
+        { name: 'Cobra Zero', course: 'drinks', cat: 'Beer', price: 4.99, desc: 'Alcohol-free Indian lager.', allergens: 'Gluten' },
+        // Wine - Champagne & Sparkling
+        { name: 'Gremillet Champagne (bottle)', course: 'drinks', cat: 'Champagne & Sparkling', price: 69.95, desc: 'Pinot Noir/Chardonnay. Aromas of buttered toast, very fresh and long in taste. Organic, France.', allergens: 'Sulphites' },
+        { name: 'Dogarina Prosecco (glass)', course: 'drinks', cat: 'Champagne & Sparkling', price: 10.95, desc: 'Straw colour with charming aromas of apples and pears. Bright, fresh and fruity.', allergens: 'Sulphites' },
+        { name: 'Dogarina Prosecco (bottle)', course: 'drinks', cat: 'Champagne & Sparkling', price: 35.95, desc: 'Straw colour with charming aromas of apples and pears. Bright, fresh and fruity.', allergens: 'Sulphites' },
+        { name: 'Glera Prosecco (bottle)', course: 'drinks', cat: 'Champagne & Sparkling', price: 45.95, desc: 'Prosecco DOC Spumante, Italy (Vegan). Fresh orchard fruit, wild flower aromas, fine long-lasting bubbles.', allergens: 'Sulphites' },
+        { name: 'Villa Conchi Cava (bottle)', course: 'drinks', cat: 'Champagne & Sparkling', price: 49.95, desc: 'Goldstar winner at the Irish Wine Show. Crisp apple flavors with a full toasty finish.', allergens: 'Sulphites' },
+        // Wine - Rosé
+        { name: 'Maribeau Rosé (bottle)', course: 'drinks', cat: 'Rosé Wine', price: 30.95, desc: 'Pale pink with aromas of ripe red berries and delicate spice. Refreshing with pleasing acidity. France.', allergens: 'Sulphites' },
+        // Wine - White
+        { name: 'Sauvignon Blanc (glass)', course: 'drinks', cat: 'White Wine', price: 7.50, desc: 'Crisp Sauvignon Blanc with refreshing citrus aromas, white peaches and lychee. Tocornal, Chile.', allergens: 'Sulphites' },
+        { name: 'Sauvignon Blanc (bottle)', course: 'drinks', cat: 'White Wine', price: 24.95, desc: 'Crisp Sauvignon Blanc with refreshing citrus aromas, white peaches and lychee. Tocornal, Chile.', allergens: 'Sulphites' },
+        { name: 'Pinot Grigio (glass)', course: 'drinks', cat: 'White Wine', price: 8.50, desc: 'Fresh and elegant with fruity notes of peach and apricot. Villa del lago, Italy.', allergens: 'Sulphites' },
+        { name: 'Pinot Grigio (bottle)', course: 'drinks', cat: 'White Wine', price: 31.95, desc: 'Fresh and elegant with fruity notes of peach and apricot. Villa del lago, Italy.', allergens: 'Sulphites' },
+        { name: 'Chardonnay Rawsons (bottle)', course: 'drinks', cat: 'White Wine', price: 28.95, desc: 'Creamy with fresh melon, ripe stone fruit. A hint of custard apple and subtle oak. Australia.', allergens: 'Sulphites' },
+        { name: 'Gruner Veltliner (bottle)', course: 'drinks', cat: 'White Wine', price: 35.95, desc: 'Bright and crisp, green apple and white pepper notes. Perfectly complements Indian spices. Austria.', allergens: 'Sulphites' },
+        { name: 'Rioja Blanco (bottle)', course: 'drinks', cat: 'White Wine', price: 32.95, desc: 'Luis Canas Rioja Blanco — 90% Viura and 10% Malvasia. Barrel fermented 3.5 months in French oak. Spain.', allergens: 'Sulphites' },
+        { name: 'Albarino (bottle)', course: 'drinks', cat: 'White Wine', price: 36.95, desc: 'Intense full nose with marked varietal character. Fresh with aromatic complexity. Pionero mundi, Spain.', allergens: 'Sulphites' },
+        { name: 'Sauvignon Blanc Organic (bottle)', course: 'drinks', cat: 'White Wine', price: 39.95, desc: 'Lush aroma of passionfruit, gooseberry, blackcurrant. Mineral and refreshing. Marlborough, New Zealand.', allergens: 'Sulphites' },
+        { name: 'Chablis Moreau (bottle)', course: 'drinks', cat: 'White Wine', price: 54.95, desc: 'Clean, mineral and perfumed nose, flinty flavours of grapefruit. Fresh, crisp and elegant. France.', allergens: 'Sulphites' },
+        // Wine - Red
+        { name: 'Cabernet Sauvignon (glass)', course: 'drinks', cat: 'Red Wine', price: 7.50, desc: 'Rich concentrated blackcurrant flavors. Well balanced with a long finish. Tocornal, Chile.', allergens: 'Sulphites' },
+        { name: 'Cabernet Sauvignon (bottle)', course: 'drinks', cat: 'Red Wine', price: 24.95, desc: 'Rich concentrated blackcurrant flavors. Well balanced with a long finish. Tocornal, Chile.', allergens: 'Sulphites' },
+        { name: 'Shiraz Rawsons (bottle)', course: 'drinks', cat: 'Red Wine', price: 29.95, desc: 'Blackcurrant and cassis with hints of woody spices. Dark fruits, medium body. Australia.', allergens: 'Sulphites' },
+        { name: 'Merlot Coastal Reserve (bottle)', course: 'drinks', cat: 'Red Wine', price: 32.95, desc: 'Red and black fruit, vanilla oak. Rich plum, blackberry, hint of liquorice. Spain.', allergens: 'Sulphites' },
+        { name: 'Pinot Noir Moreau (bottle)', course: 'drinks', cat: 'Red Wine', price: 32.95, desc: 'Classic French Pinot Noir with delicious ripe red summer fruits. Elegant soft finish. France.', allergens: 'Sulphites' },
+        { name: 'Montepulciano Organic (bottle)', course: 'drinks', cat: 'Red Wine', price: 35.95, desc: 'Typical and elegant with clean complex fruit scents. Tore De Beati Organic, Italy.', allergens: 'Sulphites' },
+        { name: 'Malbec Andean (bottle)', course: 'drinks', cat: 'Red Wine', price: 36.95, desc: 'Vibrant berry fruit with a hint of violet. Wonderfully fresh and moreish. Argentina.', allergens: 'Sulphites' },
+        { name: 'Tempranillo Crianza (bottle)', course: 'drinks', cat: 'Red Wine', price: 38.95, desc: 'Smooth and fruity with gentle tannins. Great persistence and structure. Lopez de Harold, Spain.', allergens: 'Sulphites' },
+        { name: 'Ripasso Masi (bottle)', course: 'drinks', cat: 'Red Wine', price: 49.95, desc: 'Strong and attractive cherry flavors. Rich, full bodied, well balanced. Masi Campoforin, Italy.', allergens: 'Sulphites' },
+        { name: 'Brolo Masi (bottle)', course: 'drinks', cat: 'Red Wine', price: 55.95, desc: 'Rich, full bodied and packed with baked fruit and hints of cocoa and vanilla. Masi, Italy.', allergens: 'Sulphites' },
+        { name: 'Valpolicella Ripasso (bottle)', course: 'drinks', cat: 'Red Wine', price: 58.95, desc: 'Velvety fruit with a big mouth feel. Zenato Valpolicella Ripasso Classico. Highly recommended!', allergens: 'Sulphites' },
+        { name: 'Amarone della Valpolicella (bottle)', course: 'drinks', cat: 'Red Wine', price: 99.95, desc: 'Unique bouquet of dried roses, lime zest, cherry sauce. A serious impression. Zenato, Italy.', allergens: 'Sulphites' },
+        // Non-alcoholic
+        { name: 'Mango Lassi', course: 'drinks', cat: 'Non-Alcoholic', price: 5.95, desc: 'Refreshing blend of mango and yogurt. Contains milk and pistachio nuts.', allergens: 'Milk,Pistachio' },
+        { name: 'Coke / Diet Coke / Zero', course: 'drinks', cat: 'Non-Alcoholic', price: 3.00, desc: 'Please specify your preference.', allergens: 'None' },
+        { name: '7UP', course: 'drinks', cat: 'Non-Alcoholic', price: 3.00, desc: 'Classic lemon-lime soda.', allergens: 'None' },
+        { name: 'Fanta Orange', course: 'drinks', cat: 'Non-Alcoholic', price: 3.00, desc: 'Classic orange soda.', allergens: 'None' },
+        { name: 'Still Water', course: 'drinks', cat: 'Non-Alcoholic', price: 3.00, desc: 'Bottled still water.', allergens: 'None' },
+        { name: 'Sparkling Water', course: 'drinks', cat: 'Non-Alcoholic', price: 3.00, desc: 'Bottled sparkling water.', allergens: 'None' },
+        { name: 'Berry Breeze', course: 'drinks', cat: 'Non-Alcoholic', price: 6.95, desc: 'Refreshing blend of strawberry, lime, mint, and sparkling soda.', allergens: 'None' },
+        { name: 'Homemade Lemonade', course: 'drinks', cat: 'Non-Alcoholic', price: 6.95, desc: 'Fresh lemon juice, sparkling soda, and mint for a refreshing twist.', allergens: 'None' },
+        // Tea & Coffee
+        { name: 'Masala Chai / Tea', course: 'drinks', cat: 'Tea & Coffee', price: 4.95, desc: 'Traditional spiced Indian tea with milk.', allergens: 'Milk' },
+        { name: 'Green Tea', course: 'drinks', cat: 'Tea & Coffee', price: 3.50, desc: 'Refreshing green tea.', allergens: 'None' },
+        { name: 'Camomile Tea', course: 'drinks', cat: 'Tea & Coffee', price: 3.50, desc: 'Soothing camomile tea.', allergens: 'None' },
+        { name: 'Peppermint Tea', course: 'drinks', cat: 'Tea & Coffee', price: 3.50, desc: 'Refreshing peppermint tea.', allergens: 'None' },
+        { name: 'English Tea', course: 'drinks', cat: 'Tea & Coffee', price: 3.50, desc: 'Classic English breakfast tea.', allergens: 'None' },
+        { name: 'Americano', course: 'drinks', cat: 'Tea & Coffee', price: 4.50, desc: 'Espresso with hot water.', allergens: 'None' },
+        { name: 'Espresso', course: 'drinks', cat: 'Tea & Coffee', price: 3.50, desc: 'Strong Italian espresso shot.', allergens: 'None' },
+        { name: 'Cappuccino', course: 'drinks', cat: 'Tea & Coffee', price: 4.50, desc: 'Espresso with steamed milk and foam.', allergens: 'Milk' },
+        { name: 'Irish Coffee', course: 'drinks', cat: 'Tea & Coffee', price: 7.00, desc: 'Hot coffee with Irish whiskey and cream.', allergens: 'Milk' },
     ];
+
     const insert = db.prepare('INSERT INTO menu_items (name, course, category, price, description, allergens, display_order) VALUES (?,?,?,?,?,?,?)');
     menu.forEach((item, idx) => insert.run(item.name, item.course, item.cat, item.price, item.desc, item.allergens, idx));
-    console.log(`✓ Menu created (${menu.length} items)`);
+    console.log(`✓ Full Raha menu created (${menu.length} items)`);
 }
 
 // ============= API ROUTES =============
