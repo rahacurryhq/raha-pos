@@ -199,22 +199,19 @@
                             .forEach(({ f, t, d }) => {
                                 const osc = ctx.createOscillator();
                                 const gain = ctx.createGain();
-                                osc.connect(gain);
-                                gain.connect(ctx.destination);
-                                osc.type = 'sine';
-                                osc.frequency.value = f;
+                                osc.connect(gain); gain.connect(ctx.destination);
+                                osc.type = 'sine'; osc.frequency.value = f;
                                 const s = ctx.currentTime + t;
                                 gain.gain.setValueAtTime(0.5, s);
                                 gain.gain.exponentialRampToValueAtTime(0.001, s + d);
-                                osc.start(s);
-                                osc.stop(s + d);
+                                osc.start(s); osc.stop(s + d);
                             });
                     } catch(e) {}
                 },
 
                 async login() {
                     if (!this.loginPin || this.loginPin.length !== 4) {
-                        this.loginError = 'Please enter 4-digit PIN';
+                        this.loginError = 'Please enter a 4-digit PIN';
                         return;
                     }
                     try {
@@ -256,7 +253,7 @@
                     this.socket.on('order_updated', (order) => {
                         const idx = this.orders.findIndex(o => o.id === order.id);
                         if (idx !== -1) {
-                            this.orders.splice(idx, 1, order); // splice triggers Vue reactivity
+                            this.orders.splice(idx, 1, order);
                         } else {
                             this.orders.unshift(order);
                         }
