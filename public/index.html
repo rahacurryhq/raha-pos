@@ -142,9 +142,7 @@
     }
     // Auto-fullscreen on load if kiosk mode
     window.addEventListener('load', () => {
-      if (localStorage.getItem('raha-kiosk-mode') === 'true') {
-        setTimeout(goFullscreen, 500);
-      }
+
     });
     // Prevent back/forward navigation in kiosk mode
     history.pushState(null, null, location.href);
@@ -156,23 +154,6 @@
 <body class="bg-gray-100">
 <div id="app">
 
-
-<!-- KIOSK LOCK OVERLAY -->
-<div v-if="kioskLocked" class="fixed inset-0 bg-gray-900 z-[999] flex items-center justify-center">
-  <div class="text-center text-white p-8 max-w-sm w-full">
-    <div class="text-8xl mb-6">🔒</div>
-    <h1 class="text-3xl font-bold text-orange-500 mb-2">RAHA POS</h1>
-    <p class="text-gray-400 mb-8">Enter unlock password to access</p>
-    <input v-model="kioskUnlockInput" type="password" maxlength="20"
-      @keyup.enter="unlockKiosk"
-      class="w-full text-center text-2xl bg-gray-800 border-2 border-gray-600 text-white rounded-xl py-4 mb-4 focus:border-orange-500 focus:outline-none"
-      placeholder="••••••••" autofocus>
-    <button @click="unlockKiosk" class="w-full bg-orange-600 text-white py-3 rounded-xl font-bold text-lg hover:bg-orange-700 transition">
-      Unlock
-    </button>
-    <p v-if="kioskError" class="text-red-400 mt-3 text-sm">{{ kioskError }}</p>
-  </div>
-</div>
 
 <!-- LOGIN -->
 <div v-if="!user" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-500 to-red-600">
@@ -1342,7 +1323,7 @@ createApp({
     isOnline:navigator.onLine,
     offlineQueue:0,
     // Kiosk
-    kioskLocked:localStorage.getItem('raha-kiosk-mode')==='true',
+    kioskLocked:false,
     kioskUnlockInput:'',kioskError:'',
     // Staff management
     staffList:[],newStaff:{name:'',pin:'',role:'front'},staffAdminPin:'',
@@ -1470,7 +1451,7 @@ createApp({
           this.showToast(welcomes[d.user.role]||`Welcome, ${d.user.name}! 👋`);
           this.connectSocket();
           await Promise.all([this.loadMenu(),this.loadStats(),this.loadOrders(),this.loadTables()]);
-        }else{this.loginError=d.message||'Invalid PIN'}
+        }else{this.loginError=d.message||'Invalid PIN';this.loginPin='';}
       }catch(e){this.loginError='Cannot connect to server'}
       finally{this.loggingIn=false}
     },
@@ -1645,12 +1626,12 @@ createApp({
 
     // ===== KIOSK =====
     enableKiosk(){
-      localStorage.setItem('raha-kiosk-mode','true');
+      // kiosk mode disabled
       if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
       this.showToast('Kiosk mode enabled — unlock password required to exit');
     },
     disableKiosk(){
-      localStorage.removeItem('raha-kiosk-mode');
+      // kiosk mode disabled
       if(document.exitFullscreen) document.exitFullscreen();
       this.kioskLocked=false;
       this.showToast('Kiosk mode disabled');
