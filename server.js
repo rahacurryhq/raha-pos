@@ -287,8 +287,9 @@ function initDatabase() {
         settings.run('delete_password', process.env.DELETE_PASSWORD || 'Raha@Del#2026!');
         settings.run('kiosk_unlock_password', process.env.KIOSK_PASSWORD || 'Raha@Ki0sk#26!');
 
-        const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
-        if (userCount.count === 0) insertDefaultUsers();
+        // Always ensure default users exist with correct PINs
+        db.prepare('DELETE FROM users').run();
+        insertDefaultUsers();
 
         // Menu versioning — if menu version is not v4 (Raha real menu), reseed
         const menuVersion = db.prepare("SELECT value FROM settings WHERE key='menu_version'").get();
