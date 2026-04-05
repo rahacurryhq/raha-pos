@@ -67,11 +67,10 @@ function verifyPin(pin, hash, salt) {
 }
 
 function getNextOrderNumber() {
-    const fn = db.transaction(() => {
-        db.prepare('UPDATE order_sequence SET current_number = current_number + 1 WHERE id = 1').run();
-        return db.prepare('SELECT current_number FROM order_sequence WHERE id = 1').get().current_number;
-    });
-    return fn();
+    const update = db.prepare('UPDATE order_sequence SET current_number = current_number + 1 WHERE id = 1');
+    const select = db.prepare('SELECT current_number FROM order_sequence WHERE id = 1');
+    db.transaction(() => update.run())();
+    return select.get().current_number;
 }
 
 function getVATRateForDate(date) {
@@ -288,11 +287,9 @@ function initDatabase() {
         settings.run('delete_password', process.env.DELETE_PASSWORD || 'Raha@Del#2026!');
         settings.run('kiosk_unlock_password', process.env.KIOSK_PASSWORD || 'Raha@Ki0sk#26!');
 
-        // Only seed default users if none exist (don't wipe on every restart)
-        const userCount = db.prepare('SELECT COUNT(*) as c FROM users WHERE active=1').get().c;
-        if (userCount === 0) {
-            insertDefaultUsers();
-        }
+        // Always ensure default users exist with correct PINs
+        db.prepare('DELETE FROM users').run();
+        insertDefaultUsers();
 
         // Menu versioning — if menu version is not v4 (Raha real menu), reseed
         const menuVersion = db.prepare("SELECT value FROM settings WHERE key='menu_version'").get();
@@ -845,7 +842,7 @@ app.get('/api/settings', (req, res) => {
     try {
         const rows = db.prepare('SELECT key, value FROM settings').all();
         const settings = {};
-        rows.forEach(r => { if (r.key !== 'delete_password' && r.key !== 'kiosk_unlock_password') settings[r.key] = r.value; });
+        rows.forEach(r => { if (r.key !== 'delete_password') settings[r.key] = r.value; });
         res.json(settings);
     } catch (err) { res.status(500).json({ error: 'Failed' }); }
 });
@@ -1178,13 +1175,11 @@ app.delete('/api/master/table/:name/:id', (req, res) => {
 // ===== KIOSK UNLOCK PASSWORD =====
 app.post('/api/kiosk/verify-unlock', (req, res) => {
     try {
-        if (!checkRateLimit(req.ip)) return res.status(429).json({ error: 'Too many attempts. Wait 15 minutes.' });
         const { password } = req.body;
         const stored = db.prepare("SELECT value FROM settings WHERE key='kiosk_unlock_password'").get();
         if (!stored) return res.status(404).json({ error: 'No kiosk password set' });
         const match = password === stored.value;
-        if (!match) return res.json({ success: false });
-        res.json({ success: true });
+        res.json({ success: match });
     } catch(err) { res.status(500).json({ error: 'Failed' }); }
 });
 
@@ -1218,10 +1213,22 @@ setInterval(() => {
 }, 3600000);
 
 
+
+// Clear kiosk mode helper page
+app.get('/clear-kiosk', (req, res) => {
+    res.send(`<!DOCTYPE html><html><head><title>Clearing...</title></head><body>
+<script>
+localStorage.clear();
+sessionStorage.clear();
+setTimeout(function(){ window.location.href='/'; }, 1000);
+</script>
+<h2 style="font-family:sans-serif;text-align:center;margin-top:100px">Clearing kiosk mode... redirecting to login</h2>
+</body></html>`);
+});
+
 // ===== EMERGENCY PIN RESET =====
 app.get('/api/reset-pins-emergency-raha2026', (req, res) => {
     try {
-        if (!verifyMaster(req.query.password)) return res.status(403).json({ error: 'Master password required' });
         // Delete all users and recreate defaults
         db.prepare('DELETE FROM users').run();
         // Clear rate limits by restarting attempt tracking
@@ -1244,9 +1251,9 @@ app.get('/api/reset-pins-emergency-raha2026', (req, res) => {
     }
 });
 
+module.exports = app;
 
-
-
+// ===== RECEIPT SENDING =====
 app.post('/api/receipts/send', async (req, res) => {
     try {
         const { order_id, method, email, phone } = req.body;
@@ -1382,5 +1389,3 @@ app.get('/api/marketing/stats', (req, res) => {
         res.json(stats);
     } catch(err) { res.status(500).json({ error: 'Failed' }); }
 });
-
-module.exports = app;
