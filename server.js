@@ -271,8 +271,8 @@ function initDatabase() {
         settings.run('restaurant_name', 'The RAHA');
         settings.run('delivery_charge', '3.50');
         settings.run('currency', 'EUR');
-        settings.run('delete_password', process.env.DELETE_PASSWORD || 'Raha@Delete2026');
-        settings.run('kiosk_unlock_password', process.env.KIOSK_PASSWORD || 'Raha@Kiosk2026');
+        settings.run('delete_password', process.env.DELETE_PASSWORD || 'Raha@Del#2026!');
+        settings.run('kiosk_unlock_password', process.env.KIOSK_PASSWORD || 'Raha@Ki0sk#26!');
 
         const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get();
         if (userCount.count === 0) insertDefaultUsers();
