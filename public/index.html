@@ -3,17 +3,96 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Raha Indian Cuisine — POS</title>
+<title>RAHA — Point of Sale</title>
 <script src="https://cdn.jsdelivr.net/npm/vue@3.3.4/dist/vue.global.prod.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <style>
-  .slide-in{animation:slideIn .2s ease}
-  @keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+  :root{--gold:#d4a017;--gold-dark:#a07810;--crimson:#c8511a;--navy:#0f1f3d;--cream:#fdf8f0;--cream-dark:#f5edd8;--ink:#1a0a00}
+  body{font-family:'DM Sans',sans-serif;background:var(--cream)}
+  h1,h2,h3,.serif{font-family:'Cormorant Garamond',serif}
+  ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:var(--gold-dark);border-radius:3px}
+  .slide-in{animation:slideIn .25s ease}
+  @keyframes slideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
   .table-available{border-color:#22c55e;background:#f0fdf4}
   .table-occupied{border-color:#ef4444;background:#fef2f2}
-  .table-reserved{border-color:#f59e0b;background:#fffbeb}
+
+  /* NAV redesign */
+  nav.bg-gradient-to-r{background:linear-gradient(135deg,var(--ink) 0%,#3d1000 100%)!important;border-bottom:1px solid rgba(212,160,23,0.2)}
+  nav .text-xl{font-family:'Cormorant Garamond',serif;letter-spacing:2px;color:var(--gold)!important}
+
+  /* Login redesign */
+  .min-h-screen.flex.items-center.justify-center.bg-gradient-to-br{background:var(--ink)!important}
+  .bg-white.rounded-2xl.shadow-2xl{border:1px solid rgba(212,160,23,0.2);background:rgba(255,255,255,0.04)!important;backdrop-filter:blur(20px)}
+  .bg-white.rounded-2xl.shadow-2xl h1{font-family:'Cormorant Garamond',serif;color:var(--gold)!important;letter-spacing:4px}
+  .bg-white.rounded-2xl.shadow-2xl p{color:rgba(255,255,255,0.5)!important}
+  .bg-white.rounded-2xl.shadow-2xl input{background:rgba(255,255,255,0.06)!important;border-color:rgba(212,160,23,0.3)!important;color:white!important;border-radius:12px}
+  .bg-white.rounded-2xl.shadow-2xl input:focus{border-color:var(--gold)!important}
+  .bg-white.rounded-2xl.shadow-2xl button.bg-orange-600{background:linear-gradient(135deg,var(--gold),var(--gold-dark))!important;color:var(--ink)!important;font-weight:700}
+
+  /* Cards */
+  .bg-white.rounded-xl.shadow{border:1px solid rgba(0,0,0,0.05);box-shadow:0 4px 24px rgba(26,10,0,0.08)!important}
+
+  /* Stat cards top border */
+  .bg-white.rounded-xl.shadow.p-4{position:relative;overflow:hidden}
+
+  /* Buttons */
+  .bg-orange-600,.bg-orange-700{background:var(--crimson)!important}
+  .bg-green-600,.bg-green-700{background:#2e7d52!important}
+  .bg-blue-500{background:var(--navy)!important}
+  .bg-yellow-500{background:var(--gold-dark)!important;color:var(--ink)!important}
+
+  /* Menu items */
+  .bg-gradient-to-br.from-orange-50.to-red-50{background:white!important;border:1px solid rgba(0,0,0,0.07)!important;border-radius:10px}
+  .bg-gradient-to-br.from-orange-50.to-red-50:hover{border-color:var(--gold)!important;box-shadow:0 4px 12px rgba(212,160,23,0.15)}
+  .border-orange-400.bg-orange-50{border-color:var(--gold)!important;background:linear-gradient(135deg,#fffbeb,#fef3c7)!important}
+  .text-orange-600{color:var(--crimson)!important}
+  .font-black.text-xl.mb-3{font-family:'Cormorant Garamond',serif;font-size:1.5rem!important}
+
+  /* Nav tabs */
+  .bg-white\/25{background:rgba(212,160,23,0.15)!important;border-bottom:2px solid var(--gold)!important}
+  .hover\:bg-white\/10:hover{background:rgba(255,255,255,0.05)!important}
+
+  /* CRM customer cards */
+  .customer-card{transition:all 0.2s ease;cursor:pointer}
+  .customer-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(200,81,26,0.15)!important;border-color:var(--gold)!important}
+  .customer-vip{border-color:var(--gold)!important;background:linear-gradient(135deg,#fffbeb,white)!important}
+
+  /* Table grid */
+  .table-available{border-width:2px;border-radius:16px}
+  .table-occupied{border-width:2px;border-radius:16px}
+
+  /* Staff badges */
+  .role-badge-admin{background:linear-gradient(135deg,#991b1b,#dc2626);color:white}
+  .role-badge-manager{background:linear-gradient(135deg,#6b21a8,#9333ea);color:white}
+  .role-badge-chef{background:linear-gradient(135deg,var(--crimson),#e07040);color:white}
+  .role-badge-front{background:linear-gradient(135deg,var(--navy),#2563eb);color:white}
+
+  /* Receipt button */
+  .receipt-btn{background:var(--cream-dark);border:1px solid rgba(0,0,0,0.1);color:var(--ink);border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;transition:all 0.15s}
+  .receipt-btn:hover{background:var(--gold);color:var(--ink)}
+
+  /* Marketing */
+  .segment-card{border-radius:12px;padding:16px;border:2px solid transparent;text-align:center;cursor:pointer;transition:all 0.15s;background:white}
+  .segment-card:hover{border-color:var(--gold-dark)}
+  .segment-card.selected{border-color:var(--gold);background:linear-gradient(135deg,#fffbeb,white)}
+  .segment-count{font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:700;color:var(--crimson)}
+
+  /* Loyalty bar */
+  .loyalty-bar{height:3px;background:rgba(0,0,0,0.08);border-radius:2px;margin-top:8px;overflow:hidden}
+  .loyalty-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-light));border-radius:2px}
+
+  /* Chart container */
+  .chart-wrap{position:relative;height:200px}
+
+  /* Toast */
+  .fixed.bottom-6{z-index:999!important}
+  .bg-gray-900{background:var(--ink)!important;color:var(--gold)!important}
+  .bg-red-600{background:#dc2626!important}
+  .bg-yellow-500.text-gray-900{background:#b45309!important;color:white!important}
 </style>
   <script>
     if ('serviceWorker' in navigator) {
@@ -142,7 +221,7 @@
   <nav class="bg-gradient-to-r from-orange-600 to-red-600 text-white shadow-xl flex-shrink-0">
     <div class="px-4 py-3 flex justify-between items-center">
       <div class="flex items-center gap-3">
-        <span class="text-xl font-bold">🍛 THE RAHA</span>
+        <span class="text-xl font-bold">RAHA</span>
         <span class="bg-white/20 px-2 py-0.5 rounded text-xs font-semibold capitalize">{{ user.role }}</span>
       </div>
       <div class="flex items-center gap-2">
@@ -192,8 +271,8 @@
     <div v-if="activeTab==='dashboard'" class="slide-in space-y-4">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="bg-white rounded-xl shadow p-4">
-          <p class="text-gray-400 text-xs mb-1">Today's Orders</p>
-          <p class="text-3xl font-black text-orange-600">{{ stats.today_orders||0 }}</p>
+          <p class="text-gray-400 text-xs mb-1" style="letter-spacing:1px;text-transform:uppercase">Today's Orders</p>
+          <p class="text-3xl font-black text-orange-600" style="font-family:'Cormorant Garamond',serif;font-size:2.5rem">{{ stats.today_orders||0 }}</p>
         </div>
         <div class="bg-white rounded-xl shadow p-4">
           <p class="text-gray-400 text-xs mb-1">Revenue</p>
@@ -245,12 +324,15 @@
                 <td class="px-3 py-2.5 text-xs capitalize text-gray-500">{{ o.payment_type }}</td>
                 <td class="px-3 py-2.5"><span :class="statusClass(o.status)" class="px-2 py-0.5 rounded-full text-xs font-bold">{{ o.status.toUpperCase() }}</span></td>
                 <td class="px-3 py-2.5">
-                  <select v-if="!['completed','cancelled'].includes(o.status)" @change="quickStatus(o.id,$event.target.value)" class="text-xs border rounded px-1.5 py-0.5 bg-white">
-                    <option value="">Change...</option>
-                    <option value="cooking">🔥 Cooking</option>
-                    <option value="ready">✅ Ready</option>
-                    <option value="completed">✔️ Done</option>
-                  </select>
+                  <div style="display:flex;align-items:center;gap:4px">
+                    <select v-if="!['completed','cancelled'].includes(o.status)" @change="quickStatus(o.id,$event.target.value)" class="text-xs border rounded px-1.5 py-0.5 bg-white">
+                      <option value="">Change...</option>
+                      <option value="cooking">🔥 Cooking</option>
+                      <option value="ready">✅ Ready</option>
+                      <option value="completed">✔️ Done</option>
+                    </select>
+                    <button @click="openReceipt(o)" class="receipt-btn"><i class="fas fa-receipt"></i></button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -350,28 +432,7 @@
           <!-- Customer -->
           <div class="space-y-2 mb-3">
             <input v-model="custName" type="text" :placeholder="orderMode==='dine-in'?'Customer/guest name (optional)':'Customer name'" class="w-full border rounded-lg px-3 py-2 text-sm">
-            <div v-if="orderMode!=='dine-in'" class="relative">
-              <input v-model="custPhone" type="tel" placeholder="📞 Phone number"
-                @input="onPhoneInput"
-                class="w-full border rounded-lg px-3 py-2 text-sm pr-20">
-              <button v-if="custPhone&&custPhone.length>=7" @click="lookupPhone"
-                class="absolute right-1 top-1 bg-orange-600 text-white text-xs px-2.5 py-1.5 rounded-lg font-bold hover:bg-orange-700 transition">
-                Lookup
-              </button>
-            </div>
-            <!-- Customer found popup -->
-            <div v-if="foundCustomer" class="bg-green-50 border border-green-200 rounded-xl p-3 relative">
-              <button @click="foundCustomer=null" class="absolute top-2 right-2 text-green-400 text-xs font-bold hover:text-green-600">✕</button>
-              <p class="font-bold text-green-700 text-sm">✅ {{ foundCustomer.name }}</p>
-              <p v-if="foundCustomer.address" class="text-xs text-gray-500 mt-0.5">🏠 {{ foundCustomer.address }}</p>
-              <p v-if="foundCustomer.allergen_info" class="text-xs text-red-600 mt-0.5 font-semibold">⚠️ {{ foundCustomer.allergen_info }}</p>
-              <p v-if="foundCustomer.delivery_notes" class="text-xs text-blue-600 mt-0.5">📝 {{ foundCustomer.delivery_notes }}</p>
-              <p class="text-xs text-gray-400 mt-1">{{ foundCustomer.total_orders }} previous orders · €{{ (foundCustomer.total_spent||0).toFixed(2) }} spent</p>
-              <button @click="useCustomer(foundCustomer)"
-                class="mt-2 w-full bg-green-600 text-white text-xs py-1.5 rounded-lg font-bold hover:bg-green-700 transition">
-                <i class="fas fa-check mr-1"></i>Use this customer
-              </button>
-            </div>
+            <input v-if="orderMode!=='dine-in'" v-model="custPhone" type="tel" placeholder="📞 Phone number" class="w-full border rounded-lg px-3 py-2 text-sm">
             <input v-if="orderMode==='delivery'" v-model="custAddress" type="text" placeholder="🏠 Delivery address" class="w-full border rounded-lg px-3 py-2 text-sm">
           </div>
 
@@ -548,7 +609,7 @@
               <td class="px-3 py-3 text-xs capitalize text-gray-500">{{ o.payment_type }}</td>
               <td class="px-3 py-3"><span :class="statusClass(o.status)" class="px-2 py-0.5 rounded-full text-xs font-bold">{{ o.status.toUpperCase() }}</span></td>
               <td v-if="user.role==='admin'" class="px-3 py-3">
-                <button @click="promptDelete(o)" class="text-red-400 hover:text-red-600 transition"><i class="fas fa-trash text-xs"></i></button>
+                <button @click="openReceipt(o)" class="receipt-btn mr-1"><i class="fas fa-receipt"></i></button><button @click="promptDelete(o)" class="text-red-400 hover:text-red-600 transition"><i class="fas fa-trash text-xs"></i></button>
               </td>
             </tr>
           </tbody>
@@ -645,16 +706,19 @@
       </div>
 
       <div class="flex justify-between items-center flex-wrap gap-2">
-        <h2 class="text-xl font-black">👥 Customers ({{ customers.length }})</h2>
-        <button @click="dlCSV('customers')" class="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-orange-700">
-          <i class="fas fa-download mr-1"></i>Export CSV
-        </button>
+        <h2 class="text-xl font-black" style="font-family:'Cormorant Garamond',serif;font-size:1.6rem">Customer CRM ({{ customers.length }})</h2>
+        <button @click="showMarketingModal=true;loadMarketingStats()" style="background:var(--crimson);color:white;padding:8px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:700;font-size:13px;margin-right:6px">
+            <i class="fas fa-bullhorn" style="margin-right:6px"></i>Send Campaign
+          </button>
+          <button @click="dlCSV('customers')" class="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold hover:bg-orange-700">
+            <i class="fas fa-download mr-1"></i>Export CSV
+          </button>
       </div>
       <div class="flex gap-2">
         <input v-model="custSearch" @input="loadCustomers" type="text" placeholder="Search by name or phone..." class="flex-1 border rounded-xl px-4 py-2 text-sm">
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div v-for="c in customers" :key="c.id" class="bg-white rounded-xl shadow p-4 hover:shadow-lg transition border border-transparent hover:border-orange-200">
+        <div v-for="c in customers" :key="c.id" class="bg-white rounded-xl shadow p-4 hover:shadow-lg transition border border-transparent hover:border-orange-200 customer-card" :class="{'customer-vip':c.vip}" @click="openCustomer(c)">
           <div class="flex justify-between items-start">
             <div class="flex-1 min-w-0 mr-3">
               <p class="font-black text-gray-800">{{ c.name }}</p>
@@ -1062,6 +1126,166 @@
   </div>
 </div>
 
+
+<!-- RECEIPT MODAL -->
+<div v-if="receiptOrder" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+  <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md slide-in">
+    <div class="flex justify-between items-center mb-5">
+      <h3 class="text-xl font-black" style="font-family:'Cormorant Garamond',serif">Send Receipt <span style="color:var(--crimson)">#{{ receiptOrder.order_number }}</span></h3>
+      <button @click="receiptOrder=null" class="text-gray-400 text-xl hover:text-gray-600">✕</button>
+    </div>
+    <!-- Order summary -->
+    <div style="background:var(--cream-dark);border-radius:12px;padding:14px;margin-bottom:16px;font-size:13px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#888">Subtotal</span><span>€{{ (receiptOrder.subtotal||0).toFixed(2) }}</span></div>
+      <div v-if="receiptOrder.delivery_charge>0" style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#888">Delivery</span><span>€{{ (receiptOrder.delivery_charge||0).toFixed(2) }}</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#888">VAT ({{ receiptOrder.vat_rate }}%)</span><span>€{{ (receiptOrder.vat_amount||0).toFixed(2) }}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;border-top:1px solid rgba(0,0,0,0.1);padding-top:8px;margin-top:8px;font-family:'Cormorant Garamond',serif"><span>TOTAL</span><span style="color:var(--crimson)">€{{ (receiptOrder.total||0).toFixed(2) }}</span></div>
+    </div>
+    <!-- Method -->
+    <div style="margin-bottom:14px">
+      <label style="font-size:11px;font-weight:700;color:#888;letter-spacing:1px;display:block;margin-bottom:8px;text-transform:uppercase">Send via</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <button @click="receiptMethod='email'" :style="{background:receiptMethod==='email'?'var(--navy)':'white',color:receiptMethod==='email'?'white':'#666',border:'1.5px solid',borderColor:receiptMethod==='email'?'var(--navy)':'rgba(0,0,0,0.12)',borderRadius:'8px',padding:'10px',cursor:'pointer',fontWeight:'600',fontSize:'12px'}">✉️ Email</button>
+        <button @click="receiptMethod='sms'" :style="{background:receiptMethod==='sms'?'var(--navy)':'white',color:receiptMethod==='sms'?'white':'#666',border:'1.5px solid',borderColor:receiptMethod==='sms'?'var(--navy)':'rgba(0,0,0,0.12)',borderRadius:'8px',padding:'10px',cursor:'pointer',fontWeight:'600',fontSize:'12px'}">💬 SMS</button>
+        <button @click="receiptMethod='both'" :style="{background:receiptMethod==='both'?'var(--navy)':'white',color:receiptMethod==='both'?'white':'#666',border:'1.5px solid',borderColor:receiptMethod==='both'?'var(--navy)':'rgba(0,0,0,0.12)',borderRadius:'8px',padding:'10px',cursor:'pointer',fontWeight:'600',fontSize:'12px'}">📤 Both</button>
+      </div>
+    </div>
+    <div v-if="receiptMethod==='email'||receiptMethod==='both'" style="margin-bottom:10px">
+      <label style="font-size:11px;font-weight:700;color:#888;letter-spacing:1px;display:block;margin-bottom:6px;text-transform:uppercase">Email Address</label>
+      <input v-model="receiptEmail" type="email" placeholder="customer@email.com" class="w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400">
+    </div>
+    <div v-if="receiptMethod==='sms'||receiptMethod==='both'" style="margin-bottom:10px">
+      <label style="font-size:11px;font-weight:700;color:#888;letter-spacing:1px;display:block;margin-bottom:6px;text-transform:uppercase">Phone Number</label>
+      <input v-model="receiptPhone" type="tel" placeholder="+353 87 123 4567" class="w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400">
+    </div>
+    <div style="background:#fffbeb;border:1px solid rgba(212,160,23,0.3);border-radius:8px;padding:10px;font-size:11px;color:#92400e;margin-bottom:14px">
+      💡 Email needs <strong>SENDGRID_API_KEY</strong>. SMS needs <strong>TWILIO_SID + TWILIO_TOKEN + TWILIO_FROM</strong> in Railway Variables.
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <button @click="receiptOrder=null" style="padding:12px;border-radius:10px;border:1px solid rgba(0,0,0,0.12);background:white;cursor:pointer;font-weight:600">Cancel</button>
+      <button @click="sendReceipt" :disabled="sendingReceipt" style="padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--gold),var(--gold-dark));color:var(--ink);cursor:pointer;font-weight:700">{{ sendingReceipt?'Sending...':'Send Receipt' }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- MARKETING MODAL -->
+<div v-if="showMarketingModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+  <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg slide-in" style="max-height:90vh;overflow-y:auto">
+    <div class="flex justify-between items-center mb-5">
+      <h3 class="text-xl font-black" style="font-family:'Cormorant Garamond',serif">📢 Marketing Campaign</h3>
+      <button @click="showMarketingModal=false" class="text-gray-400 text-xl hover:text-gray-600">✕</button>
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-size:11px;font-weight:700;color:#888;letter-spacing:1px;display:block;margin-bottom:8px;text-transform:uppercase">Choose Audience</label>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+        <div v-for="seg in segments" :key="seg.key" class="segment-card" :class="{selected:marketingFilter===seg.key}" @click="marketingFilter=seg.key">
+          <div class="segment-count">{{ mktStats[seg.statKey]||0 }}</div>
+          <div style="font-size:10px;font-weight:600;color:#666;margin-top:4px">{{ seg.label }}</div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;font-weight:700;color:#888;letter-spacing:1px;display:block;margin-bottom:8px;text-transform:uppercase">Send via</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button @click="marketingMethod='email'" :style="{background:marketingMethod==='email'?'var(--navy)':'white',color:marketingMethod==='email'?'white':'#666',border:'1.5px solid',borderColor:marketingMethod==='email'?'var(--navy)':'rgba(0,0,0,0.12)',borderRadius:'8px',padding:'10px',cursor:'pointer',fontWeight:'600',fontSize:'13px'}">✉️ Email</button>
+        <button @click="marketingMethod='sms'" :style="{background:marketingMethod==='sms'?'var(--navy)':'white',color:marketingMethod==='sms'?'white':'#666',border:'1.5px solid',borderColor:marketingMethod==='sms'?'var(--navy)':'rgba(0,0,0,0.12)',borderRadius:'8px',padding:'10px',cursor:'pointer',fontWeight:'600',fontSize:'13px'}">💬 SMS</button>
+      </div>
+    </div>
+    <div v-if="marketingMethod==='email'" style="margin-bottom:12px">
+      <label style="font-size:11px;font-weight:700;color:#888;letter-spacing:1px;display:block;margin-bottom:6px;text-transform:uppercase">Email Subject</label>
+      <input v-model="marketingSubject" class="w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400" placeholder="e.g. Special Sunday offer from Raha 🍛">
+    </div>
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;font-weight:700;color:#888;letter-spacing:1px;display:block;margin-bottom:6px;text-transform:uppercase">Message</label>
+      <textarea v-model="marketingMessage" rows="4" class="w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400 resize-none" placeholder="Type your message here..."></textarea>
+    </div>
+    <div style="background:#fffbeb;border:1px solid rgba(212,160,23,0.3);border-radius:8px;padding:10px;font-size:11px;color:#92400e;margin-bottom:14px">
+      💡 Only customers with marketing opt-in will receive messages. SMS needs phone number, email needs email address.
+    </div>
+    <div v-if="marketingResult" style="padding:12px;border-radius:8px;margin-bottom:14px" :style="{background:marketingResult.success?'#f0fdf4':'#fef2f2'}">
+      <span v-if="marketingResult.success" style="color:#166534">✅ Sent to {{ marketingResult.sent }} customers. {{ marketingResult.failed }} failed.</span>
+      <span v-else style="color:#dc2626">❌ {{ marketingResult.error }}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <button @click="showMarketingModal=false" style="padding:12px;border-radius:10px;border:1px solid rgba(0,0,0,0.12);background:white;cursor:pointer;font-weight:600">Cancel</button>
+      <button @click="sendCampaign" :disabled="sendingCampaign||!marketingMessage" style="padding:12px;border-radius:10px;border:none;background:var(--crimson);color:white;cursor:pointer;font-weight:700">{{ sendingCampaign?'Sending...':'Send Campaign' }}</button>
+    </div>
+  </div>
+</div>
+
+<!-- CUSTOMER DETAIL MODAL -->
+<div v-if="selectedCustomer" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+  <div class="bg-white rounded-2xl shadow-2xl w-full slide-in" style="max-width:700px;max-height:90vh;overflow-y:auto">
+    <div style="padding:20px 24px;border-bottom:1px solid rgba(0,0,0,0.08);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:white;z-index:1">
+      <h3 style="font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:700">
+        <span v-if="selectedCustomer.vip" style="color:var(--gold)">⭐ </span>{{ selectedCustomer.name }}
+      </h3>
+      <button @click="selectedCustomer=null" style="width:32px;height:32px;border-radius:8px;border:none;background:rgba(0,0,0,0.06);cursor:pointer;font-size:16px">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;padding:24px;gap:24px">
+      <!-- Left -->
+      <div>
+        <p style="font-size:10px;font-weight:700;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:14px">Customer Details</p>
+        <div style="margin-bottom:12px"><label style="font-size:11px;font-weight:600;color:#666;display:block;margin-bottom:4px">Full Name</label><input v-model="selectedCustomer.name" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400"></div>
+        <div style="margin-bottom:12px"><label style="font-size:11px;font-weight:600;color:#666;display:block;margin-bottom:4px">Phone</label><input v-model="selectedCustomer.phone" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400"></div>
+        <div style="margin-bottom:12px"><label style="font-size:11px;font-weight:600;color:#666;display:block;margin-bottom:4px">Email</label><input v-model="selectedCustomer.email" type="email" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400"></div>
+        <div style="margin-bottom:12px"><label style="font-size:11px;font-weight:600;color:#666;display:block;margin-bottom:4px">Delivery Address</label><textarea v-model="selectedCustomer.address" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400 resize-none" rows="2"></textarea></div>
+        <div style="margin-bottom:12px"><label style="font-size:11px;font-weight:600;color:#666;display:block;margin-bottom:4px">Delivery Notes</label><input v-model="selectedCustomer.delivery_notes" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400" placeholder="e.g. Leave at door"></div>
+        <div style="margin-bottom:12px"><label style="font-size:11px;font-weight:600;color:#dc2626;display:block;margin-bottom:4px">⚠️ Allergen Information</label><input v-model="selectedCustomer.allergen_info" class="w-full border border-red-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-red-400" placeholder="e.g. Nut allergy"></div>
+        <div style="margin-bottom:12px"><label style="font-size:11px;font-weight:600;color:#666;display:block;margin-bottom:4px">Preferences / Favourite Dishes</label><input v-model="selectedCustomer.preferences" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400" placeholder="e.g. Always Butter Chicken, mild"></div>
+        <div style="margin-bottom:12px"><label style="font-size:11px;font-weight:600;color:#666;display:block;margin-bottom:4px">Staff Notes (private)</label><textarea v-model="selectedCustomer.staff_notes" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400 resize-none" rows="2" placeholder="Internal notes..."></textarea></div>
+        <div style="margin-bottom:12px"><label style="font-size:11px;font-weight:600;color:#666;display:block;margin-bottom:4px">Birthday</label><input v-model="selectedCustomer.birthday" type="date" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-400"></div>
+        <div style="display:flex;gap:16px;margin-bottom:14px;font-size:13px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" v-model="selectedCustomer.vip"> ⭐ VIP Customer</label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" v-model="selectedCustomer.marketing_opt_in"> 📧 Marketing</label>
+        </div>
+        <div style="background:var(--cream-dark);border-radius:10px;padding:12px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px">🎯 Loyalty: <strong>{{ selectedCustomer.loyalty_points||0 }} points</strong></span>
+          <div style="display:flex;gap:6px">
+            <button @click="adjustLoyalty(selectedCustomer,-10)" style="padding:5px 10px;border:1px solid rgba(0,0,0,0.12);border-radius:6px;background:white;cursor:pointer;font-size:12px;font-weight:600">−10</button>
+            <button @click="adjustLoyalty(selectedCustomer,10)" style="padding:5px 10px;border:none;border-radius:6px;background:var(--gold);color:var(--ink);cursor:pointer;font-size:12px;font-weight:700">+10</button>
+          </div>
+        </div>
+      </div>
+      <!-- Right: History -->
+      <div>
+        <p style="font-size:10px;font-weight:700;letter-spacing:2px;color:#888;text-transform:uppercase;margin-bottom:14px">Order History</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+          <div style="text-align:center;background:var(--cream-dark);border-radius:10px;padding:14px">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:700;color:var(--crimson)">{{ selectedCustomer.total_orders }}</div>
+            <div style="font-size:10px;color:#aaa">Orders</div>
+          </div>
+          <div style="text-align:center;background:var(--cream-dark);border-radius:10px;padding:14px">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:700;color:var(--gold-dark)">€{{ (selectedCustomer.total_spent||0).toFixed(0) }}</div>
+            <div style="font-size:10px;color:#aaa">Spent</div>
+          </div>
+          <div style="text-align:center;background:var(--cream-dark);border-radius:10px;padding:14px">
+            <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:700;color:var(--navy)">{{ selectedCustomer.loyalty_points||0 }}</div>
+            <div style="font-size:10px;color:#aaa">Points</div>
+          </div>
+        </div>
+        <div style="border:1px solid rgba(0,0,0,0.08);border-radius:10px;overflow:hidden;max-height:260px;overflow-y:auto;margin-bottom:14px">
+          <div v-if="customerOrders.length===0" style="text-align:center;padding:30px;color:#aaa;font-size:13px">No orders yet</div>
+          <div v-for="o in customerOrders" :key="o.id" style="padding:12px 14px;border-bottom:1px solid rgba(0,0,0,0.04)">
+            <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+              <span style="font-weight:700;color:var(--crimson);font-family:'Cormorant Garamond',serif;font-size:16px">#{{ o.order_number }}</span>
+              <span style="font-weight:700">€{{ (o.total||0).toFixed(2) }}</span>
+            </div>
+            <div style="font-size:11px;color:#aaa">{{ fmtDate(o.timestamp) }} · {{ o.mode }} · {{ o.payment_type }}</div>
+          </div>
+        </div>
+        <button @click="startOrderForCustomer(selectedCustomer)" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--gold),var(--gold-dark));color:var(--ink);cursor:pointer;font-weight:700;font-size:14px;margin-bottom:8px">
+          <i class="fas fa-plus" style="margin-right:6px"></i>New Order for {{ selectedCustomer.name }}
+        </button>
+      </div>
+    </div>
+    <div style="padding:16px 24px;border-top:1px solid rgba(0,0,0,0.08);display:flex;gap:10px;justify-content:flex-end">
+      <button @click="selectedCustomer=null" style="padding:10px 20px;border-radius:10px;border:1px solid rgba(0,0,0,0.12);background:white;cursor:pointer;font-weight:600">Cancel</button>
+      <button @click="saveCustomer" style="padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,var(--gold),var(--gold-dark));color:var(--ink);cursor:pointer;font-weight:700">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- DELETE MODAL -->
 <div v-if="deleteDialog" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
   <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm slide-in">
@@ -1129,6 +1353,20 @@ createApp({
     activeCategory:'',showCombos:true,
     foundCustomer:null,
     incomingCall:null,
+    // Receipt
+    receiptOrder:null,receiptMethod:'email',receiptEmail:'',receiptPhone:'',sendingReceipt:false,
+    // CRM modal
+    selectedCustomer:null,customerOrders:[],
+    // Marketing
+    showMarketingModal:false,marketingMessage:'',marketingSubject:'',
+    marketingMethod:'email',marketingFilter:'all',marketingResult:null,sendingCampaign:false,
+    mktStats:{},
+    segments:[
+      {key:'all',label:'All Opted-in',statKey:'opted_in'},
+      {key:'vip',label:'VIP Only',statKey:'vip'},
+      {key:'recent',label:'Recent 30d',statKey:'recent'},
+      {key:'lapsed',label:'Lapsed 60d+',statKey:'lapsed'},
+    ],
   }},
   computed:{
     availableTabs(){
@@ -1253,7 +1491,7 @@ createApp({
     switchTab(key){
       this.activeTab=key;
       if(key==='sales')this.loadSales();
-      if(key==='customers')this.loadCustomers();
+      if(key==='customers'){this.loadCustomers();this.loadMarketingStats();}
       if(key==='tables')this.loadTables();
       if(key==='staff')this.loadStaff();
       if(key==='orders')this.loadOrders();
@@ -1512,6 +1750,47 @@ createApp({
       }catch(e){this.showToast('Error','error');}
     },
 
+
+    // Receipt
+    openReceipt(o){this.receiptOrder=o;this.receiptPhone=o.customer_phone||'';this.receiptEmail='';},
+    async sendReceipt(){
+      if(!this.receiptOrder)return;
+      this.sendingReceipt=true;
+      try{
+        const r=await fetch(`${this.apiUrl}/receipts/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({order_id:this.receiptOrder.id,method:this.receiptMethod,email:this.receiptEmail,phone:this.receiptPhone})});
+        const d=await r.json();
+        if(d.success){this.showToast('Receipt sent! ✅');this.receiptOrder=null;}
+        else this.showToast(d.error||'Failed to send','error');
+      }catch(e){this.showToast('Error sending receipt','error');}
+      finally{this.sendingReceipt=false;}
+    },
+    // CRM
+    async openCustomer(c){
+      this.selectedCustomer={...c};
+      try{const r=await fetch(`${this.apiUrl}/customers/${c.id}/orders`);this.customerOrders=await r.json();}catch(e){this.customerOrders=[];}
+    },
+    async saveCustomer(){
+      if(!this.selectedCustomer)return;
+      try{
+        const r=await fetch(`${this.apiUrl}/customers/${this.selectedCustomer.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(this.selectedCustomer)});
+        if(r.ok){this.showToast('Customer saved ✅');this.selectedCustomer=null;this.loadCustomers();}
+        else this.showToast('Failed to save','error');
+      }catch(e){this.showToast('Error','error');}
+    },
+    async adjustLoyalty(c,points){
+      await fetch(`${this.apiUrl}/customers/${c.id}/loyalty`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:Math.abs(points),action:points>0?'add':'redeem'})});
+      if(this.selectedCustomer)this.selectedCustomer.loyalty_points=(this.selectedCustomer.loyalty_points||0)+points;
+      this.showToast(points>0?`+${points} loyalty points`:`${points} points redeemed`);
+    },
+    // Marketing
+    async loadMarketingStats(){try{const r=await fetch(`${this.apiUrl}/marketing/stats`);this.mktStats=await r.json();}catch(e){}},
+    async sendCampaign(){
+      if(!this.marketingMessage){this.showToast('Enter a message','error');return}
+      this.sendingCampaign=true;this.marketingResult=null;
+      try{const r=await fetch(`${this.apiUrl}/marketing/send`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:this.marketingMessage,subject:this.marketingSubject,method:this.marketingMethod,filter:this.marketingFilter})});this.marketingResult=await r.json();}
+      catch(e){this.marketingResult={success:false,error:'Error'};}
+      finally{this.sendingCampaign=false;}
+    },
     updateTime(){this.currentTime=new Date().toLocaleTimeString('en-IE',{hour:'2-digit',minute:'2-digit'})},
 
   },
