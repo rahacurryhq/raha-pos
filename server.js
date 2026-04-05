@@ -1211,6 +1211,32 @@ setInterval(() => {
     }
 }, 3600000);
 
+
+// ===== EMERGENCY PIN RESET =====
+app.get('/api/reset-pins-emergency-raha2026', (req, res) => {
+    try {
+        // Delete all users and recreate defaults
+        db.prepare('DELETE FROM users').run();
+        // Clear rate limits by restarting attempt tracking
+        loginAttempts.clear();
+        const users = [
+            { name: 'Admin', pin: '9999', role: 'admin' },
+            { name: 'Manager', pin: '2222', role: 'manager' },
+            { name: 'Chef', pin: '1111', role: 'chef' },
+            { name: 'Front Staff', pin: '3333', role: 'front' }
+        ];
+        const insert = db.prepare('INSERT INTO users (name, pin_hash, pin_salt, role) VALUES (?, ?, ?, ?)');
+        users.forEach(u => {
+            const { hash, salt } = hashPin(u.pin);
+            insert.run(u.name, hash, salt, u.role);
+        });
+        console.log('✓ Emergency PIN reset done');
+        res.json({ success: true, message: 'PINs reset. Admin=9999, Manager=2222, Chef=1111, Front=3333. Rate limit cleared.' });
+    } catch(err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = app;
 
 // ===== RECEIPT SENDING =====
