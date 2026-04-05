@@ -350,7 +350,28 @@
           <!-- Customer -->
           <div class="space-y-2 mb-3">
             <input v-model="custName" type="text" :placeholder="orderMode==='dine-in'?'Customer/guest name (optional)':'Customer name'" class="w-full border rounded-lg px-3 py-2 text-sm">
-            <input v-if="orderMode!=='dine-in'" v-model="custPhone" type="tel" placeholder="📞 Phone number" class="w-full border rounded-lg px-3 py-2 text-sm">
+            <div v-if="orderMode!=='dine-in'" class="relative">
+              <input v-model="custPhone" type="tel" placeholder="📞 Phone number"
+                @input="onPhoneInput"
+                class="w-full border rounded-lg px-3 py-2 text-sm pr-20">
+              <button v-if="custPhone&&custPhone.length>=7" @click="lookupPhone"
+                class="absolute right-1 top-1 bg-orange-600 text-white text-xs px-2.5 py-1.5 rounded-lg font-bold hover:bg-orange-700 transition">
+                Lookup
+              </button>
+            </div>
+            <!-- Customer found popup -->
+            <div v-if="foundCustomer" class="bg-green-50 border border-green-200 rounded-xl p-3 relative">
+              <button @click="foundCustomer=null" class="absolute top-2 right-2 text-green-400 text-xs font-bold hover:text-green-600">✕</button>
+              <p class="font-bold text-green-700 text-sm">✅ {{ foundCustomer.name }}</p>
+              <p v-if="foundCustomer.address" class="text-xs text-gray-500 mt-0.5">🏠 {{ foundCustomer.address }}</p>
+              <p v-if="foundCustomer.allergen_info" class="text-xs text-red-600 mt-0.5 font-semibold">⚠️ {{ foundCustomer.allergen_info }}</p>
+              <p v-if="foundCustomer.delivery_notes" class="text-xs text-blue-600 mt-0.5">📝 {{ foundCustomer.delivery_notes }}</p>
+              <p class="text-xs text-gray-400 mt-1">{{ foundCustomer.total_orders }} previous orders · €{{ (foundCustomer.total_spent||0).toFixed(2) }} spent</p>
+              <button @click="useCustomer(foundCustomer)"
+                class="mt-2 w-full bg-green-600 text-white text-xs py-1.5 rounded-lg font-bold hover:bg-green-700 transition">
+                <i class="fas fa-check mr-1"></i>Use this customer
+              </button>
+            </div>
             <input v-if="orderMode==='delivery'" v-model="custAddress" type="text" placeholder="🏠 Delivery address" class="w-full border rounded-lg px-3 py-2 text-sm">
           </div>
 
