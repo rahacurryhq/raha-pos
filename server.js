@@ -56,6 +56,11 @@ function hashPin(pin) {
     return { hash, salt };
 }
 
+const MASTER_PASSWORD = process.env.MASTER_PASSWORD || 'Raha@M@ster#2026!';
+function verifyMaster(password) {
+    return password === MASTER_PASSWORD;
+}
+
 function verifyPin(pin, hash, salt) {
     if (!pin || !hash || !salt) return false;
     return crypto.pbkdf2Sync(pin, salt, 10000, 64, 'sha512').toString('hex') === hash;
