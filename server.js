@@ -116,6 +116,14 @@ function initDatabase() {
         try { db.exec("ALTER TABLE orders ADD COLUMN course_status TEXT DEFAULT '{}'"); } catch(e) {}
         try { db.exec("ALTER TABLE menu_items ADD COLUMN course TEXT NOT NULL DEFAULT 'mains'"); } catch(e) {}
         try { db.exec("ALTER TABLE menu_items ADD COLUMN vat_rate REAL DEFAULT NULL"); } catch(e) {}
+        // CRM fields
+        try { db.exec("ALTER TABLE customers ADD COLUMN birthday TEXT"); } catch(e) {}
+        try { db.exec("ALTER TABLE customers ADD COLUMN vip INTEGER DEFAULT 0"); } catch(e) {}
+        try { db.exec("ALTER TABLE customers ADD COLUMN loyalty_points INTEGER DEFAULT 0"); } catch(e) {}
+        try { db.exec("ALTER TABLE customers ADD COLUMN staff_notes TEXT DEFAULT ''"); } catch(e) {}
+        try { db.exec("ALTER TABLE customers ADD COLUMN preferences TEXT DEFAULT ''"); } catch(e) {}
+        try { db.exec("ALTER TABLE customers ADD COLUMN marketing_opt_in INTEGER DEFAULT 1"); } catch(e) {}
+        try { db.exec("ALTER TABLE customers ADD COLUMN email TEXT DEFAULT ''"); } catch(e) {}
 
         db.exec(`
             CREATE TABLE IF NOT EXISTS orders (
@@ -1174,6 +1182,7 @@ app.post('/api/kiosk/verify-unlock', (req, res) => {
     } catch(err) { res.status(500).json({ error: 'Failed' }); }
 });
 
+
 io.on('connection', (socket) => {
     console.log('✓ Client connected:', socket.id);
     socket.on('disconnect', () => console.log('✗ Client disconnected:', socket.id));
@@ -1203,3 +1212,140 @@ setInterval(() => {
 }, 3600000);
 
 module.exports = app;
+
+// ===== RECEIPT SENDING =====
+app.post('/api/receipts/send', async (req, res) => {
+    try {
+        const { order_id, method, email, phone } = req.body;
+        const order = db.prepare('SELECT * FROM orders WHERE id=?').get(order_id);
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+        order.items = JSON.parse(order.items);
+        const receiptHtml = generateReceiptHTML(order);
+
+        if ((method === 'email' || method === 'both') && email) {
+            const sgKey = process.env.SENDGRID_API_KEY;
+            if (!sgKey) return res.status(503).json({ error: 'Add SENDGRID_API_KEY to Railway Variables to send emails.' });
+            const sgMail = require('@sendgrid/mail');
+            sgMail.setApiKey(sgKey);
+            await sgMail.send({
+                to: email,
+                from: process.env.FROM_EMAIL || 'hello@rahacuisine.ie',
+                subject: 'Your Raha Receipt — Order #' + order.order_number,
+                html: receiptHtml
+            });
+        }
+
+        if ((method === 'sms' || method === 'both') && phone) {
+            const twilioSid = process.env.TWILIO_SID;
+            if (!twilioSid) return res.status(503).json({ error: 'Add TWILIO_SID, TWILIO_TOKEN, TWILIO_FROM to Railway Variables to send SMS.' });
+            const twilio = require('twilio')(twilioSid, process.env.TWILIO_TOKEN);
+            const items = order.items.map(i => i.qty + 'x ' + i.name).join(', ');
+            const smsText = 'Raha Indian Cuisine\nOrder #' + order.order_number + '\n' + items + '\nTotal: EUR' + order.total.toFixed(2) + '\nVAT: EUR' + (order.vat_amount||0).toFixed(2) + '\nThank you! Atithi Devo Bhava';
+            await twilio.messages.create({ body: smsText, from: process.env.TWILIO_FROM, to: phone });
+        }
+
+        res.json({ success: true });
+    } catch(err) {
+        console.error('Receipt error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+function generateReceiptHTML(order) {
+    const rows = order.items.map(function(i) {
+        return '<tr><td style="padding:8px 0;border-bottom:1px solid #f0e8d8;">' + i.qty + 'x ' + i.name + '</td><td style="padding:8px 0;border-bottom:1px solid #f0e8d8;text-align:right;font-weight:bold;">EUR' + (i.price*i.qty).toFixed(2) + '</td></tr>';
+    }).join('');
+    var deliveryRow = order.delivery_charge > 0 ? '<tr><td style="padding:6px 0;color:#888;">Delivery</td><td style="text-align:right;">EUR' + order.delivery_charge.toFixed(2) + '</td></tr>' : '';
+    var notesBlock = order.notes ? '<div style="margin-top:15px;padding:12px;background:#fffbf0;border-left:3px solid #d4a017;font-size:13px;"><strong>Notes:</strong> ' + order.notes + '</div>' : '';
+    return '<!DOCTYPE html><html><body style="font-family:Georgia,serif;max-width:500px;margin:0 auto;background:#fff;color:#1a0a00;">' +
+        '<div style="background:#1a0a00;padding:30px;text-align:center;">' +
+        '<h1 style="color:#d4a017;margin:0;font-size:28px;letter-spacing:3px;">RAHA</h1>' +
+        '<p style="color:#c8511a;margin:8px 0 0;font-size:11px;letter-spacing:4px;">INDIAN CUISINE · DUNDALK</p></div>' +
+        '<div style="padding:30px;">' +
+        '<p style="color:#888;font-size:11px;margin:0 0 5px;letter-spacing:2px;">ORDER RECEIPT</p>' +
+        '<h2 style="color:#c8511a;margin:0 0 5px;font-size:28px;">#' + order.order_number + '</h2>' +
+        '<p style="margin:0 0 3px;font-size:13px;color:#555;">' + new Date(order.timestamp).toLocaleString('en-IE') + '</p>' +
+        '<p style="margin:0 0 25px;font-size:12px;color:#888;text-transform:capitalize;">' + order.mode + ' · ' + order.payment_type + '</p>' +
+        '<table style="width:100%;border-collapse:collapse;">' + rows + '</table>' +
+        '<table style="width:100%;border-collapse:collapse;margin-top:15px;padding-top:15px;border-top:2px solid #1a0a00;">' +
+        '<tr><td style="padding:6px 0;color:#888;">Subtotal</td><td style="text-align:right;">EUR' + (order.subtotal||0).toFixed(2) + '</td></tr>' +
+        deliveryRow +
+        '<tr><td style="padding:6px 0;color:#888;">VAT (' + order.vat_rate + '%)</td><td style="text-align:right;">EUR' + (order.vat_amount||0).toFixed(2) + '</td></tr>' +
+        '<tr><td style="padding:12px 0 6px;font-size:20px;font-weight:bold;color:#c8511a;">TOTAL</td><td style="text-align:right;font-size:20px;font-weight:bold;color:#c8511a;padding-top:12px;">EUR' + order.total.toFixed(2) + '</td></tr>' +
+        '</table>' + notesBlock +
+        '<div style="margin-top:25px;text-align:center;padding:20px;background:#fdf8f3;border-radius:8px;">' +
+        '<p style="margin:0;color:#888;font-size:12px;">Thank you for choosing Raha</p>' +
+        '<p style="margin:6px 0 0;color:#c8511a;font-size:11px;letter-spacing:2px;">ATITHI DEVO BHAVA</p></div></div></body></html>';
+}
+
+// ===== CRM UPDATE CUSTOMER =====
+app.put('/api/customers/:id', (req, res) => {
+    try {
+        const { name, phone, email, address, delivery_notes, allergen_info, birthday, vip, loyalty_points, staff_notes, preferences, marketing_opt_in } = req.body;
+        db.prepare('UPDATE customers SET name=?,phone=?,email=?,address=?,delivery_notes=?,allergen_info=?,birthday=?,vip=?,loyalty_points=?,staff_notes=?,preferences=?,marketing_opt_in=?,updated_at=datetime(\'now\') WHERE id=?')
+            .run(name, phone||'', email||'', address||'', delivery_notes||'', allergen_info||'', birthday||null, vip?1:0, loyalty_points||0, staff_notes||'', preferences||'', marketing_opt_in?1:0, req.params.id);
+        res.json({ success: true });
+    } catch(err) { res.status(500).json({ error: 'Failed: ' + err.message }); }
+});
+
+app.post('/api/customers/:id/loyalty', (req, res) => {
+    try {
+        const { points, action } = req.body;
+        if (action === 'add') db.prepare('UPDATE customers SET loyalty_points=loyalty_points+? WHERE id=?').run(points||0, req.params.id);
+        else db.prepare('UPDATE customers SET loyalty_points=MAX(0,loyalty_points-?) WHERE id=?').run(points||0, req.params.id);
+        const c = db.prepare('SELECT loyalty_points FROM customers WHERE id=?').get(req.params.id);
+        res.json({ success: true, loyalty_points: c.loyalty_points });
+    } catch(err) { res.status(500).json({ error: 'Failed' }); }
+});
+
+// ===== MARKETING =====
+app.post('/api/marketing/send', async (req, res) => {
+    try {
+        const { message, subject, method, filter } = req.body;
+        let query = 'SELECT * FROM customers WHERE deleted=0 AND marketing_opt_in=1';
+        if (filter === 'vip') query += ' AND vip=1';
+        if (filter === 'recent') query += " AND last_order_date >= date('now','-30 days')";
+        if (filter === 'lapsed') query += " AND last_order_date <= date('now','-60 days')";
+        const customers = db.prepare(query).all();
+        let sent = 0, failed = 0;
+
+        if (method === 'email') {
+            const sgKey = process.env.SENDGRID_API_KEY;
+            if (!sgKey) return res.status(503).json({ error: 'Add SENDGRID_API_KEY to Railway Variables.' });
+            const sgMail = require('@sendgrid/mail');
+            sgMail.setApiKey(sgKey);
+            for (const c of customers.filter(function(c){ return c.email; })) {
+                try {
+                    await sgMail.send({ to: c.email, from: process.env.FROM_EMAIL || 'hello@rahacuisine.ie', subject: subject || 'A message from Raha', html: '<div style="font-family:Georgia,serif;max-width:500px;margin:0 auto;"><div style="background:#1a0a00;padding:20px;text-align:center;"><h1 style="color:#d4a017;margin:0;">RAHA</h1></div><div style="padding:25px;">' + message + '</div><p style="padding:0 25px;font-size:11px;color:#888;">Reply STOP to unsubscribe.</p></div>' });
+                    sent++;
+                } catch(e) { failed++; }
+            }
+        } else if (method === 'sms') {
+            const twilioSid = process.env.TWILIO_SID;
+            if (!twilioSid) return res.status(503).json({ error: 'Add TWILIO_SID to Railway Variables.' });
+            const twilio = require('twilio')(twilioSid, process.env.TWILIO_TOKEN);
+            for (const c of customers.filter(function(c){ return c.phone; })) {
+                try {
+                    await twilio.messages.create({ body: 'Raha Indian Cuisine: ' + message + '\nReply STOP to opt out', from: process.env.TWILIO_FROM, to: c.phone });
+                    sent++;
+                } catch(e) { failed++; }
+            }
+        }
+        res.json({ success: true, sent, failed, total: customers.length });
+    } catch(err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/marketing/stats', (req, res) => {
+    try {
+        const stats = {
+            total: db.prepare('SELECT COUNT(*) as c FROM customers WHERE deleted=0').get().c,
+            opted_in: db.prepare('SELECT COUNT(*) as c FROM customers WHERE deleted=0 AND marketing_opt_in=1').get().c,
+            vip: db.prepare('SELECT COUNT(*) as c FROM customers WHERE deleted=0 AND vip=1').get().c,
+            recent: db.prepare("SELECT COUNT(*) as c FROM customers WHERE deleted=0 AND last_order_date >= date('now','-30 days')").get().c,
+            lapsed: db.prepare("SELECT COUNT(*) as c FROM customers WHERE deleted=0 AND last_order_date <= date('now','-60 days')").get().c,
+            with_email: db.prepare("SELECT COUNT(*) as c FROM customers WHERE deleted=0 AND email != '' AND email IS NOT NULL").get().c,
+            with_phone: db.prepare("SELECT COUNT(*) as c FROM customers WHERE deleted=0 AND phone != '' AND phone IS NOT NULL").get().c,
+        };
+        res.json(stats);
+    } catch(err) { res.status(500).json({ error: 'Failed' }); }
+});
